@@ -1,0 +1,34 @@
+# Python
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+
+# Data and models: never commit these (large, and datasets have their own licences)
+data/raw/*
+!data/raw/.gitkeep
+data/processed/
+data/splits/
+data/*.sqlite3
+checkpoints/
+*.pt
+*.pth
+
+# Generated outputs and logs
+logs/
+results/
+docs/DATA_NOTES.md
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+frontend/.env
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+.env

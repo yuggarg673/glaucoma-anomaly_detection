@@ -1,0 +1,160 @@
+import Explain from "./Explain.jsx";
+
+const fmt = (v, d = 3) => (v === null || v === undefined ? "n/a" : Number(v).toFixed(d));
+
+function Tile({ title, value, sub, subTone = "text-ink-soft", help }) {
+  return (
+    <div className="flex flex-1 basis-44 flex-col gap-1 rounded-xl border border-line p-4">
+      <span className="text-sm text-ink-soft">{title}</span>
+      <span className="font-serif text-3xl font-semibold">{value}</span>
+      <span className={`text-sm ${subTone}`}>{sub}</span>
+      {help && (
+        <details className="mt-2 text-sm">
+          <summary className="cursor-pointer font-medium text-brand">What does this show?</summary>
+          <div className="mt-2">
+            <Explain entry={help} />
+          </div>
+        </details>
+      )}
+    </div>
+  );
+}
+
+export default function ResultCard({ result, previewUrl, glossary }) {
+  const suspected = result.label === "glaucoma_suspected";
+  const g = glossary || {};
+  const pos = Math.min(Math.max(result.fused_score, 0), 1) * 100;
+  const thr = Math.min(Math.max(result.threshold, 0), 1) * 100;
+
+  const anomHigh = result.anomaly_score >= result.anomaly_threshold;
+  const cdrHigh = result.cdr !== null && result.cdr >= result.cdr_reference;
+
+  return (
+    <div className="space-y-6">
+      <div className="flex flex-wrap items-center gap-4">
+        <span
+          className={`inline-flex items-center gap-2 rounded-full border px-5 py-2 text-lg font-semibold ${
+            suspected
+              ? "border-amber-300 bg-amber-100 text-amber-950"
+              : "border-green-300 bg-green-100 text-green-950"
+          }`}
+        >
+          <span className={`h-2.5 w-2.5 rounded-full ${suspected ? "bg-amber-600" : "bg-green-600"}`} />
+          {suspected ? "Glaucoma suspected" : "Normal-like"}
+        </span>
+        <span className="text-[15px] text-ink-soft">
+          {suspected ? "The combined score is above the cut-off." : "The combined score is below the cut-off."} This is
+          not a diagnosis.
+        </span>
+      </div>
+
+      <div>
+        <div className="mb-2 flex flex-wrap justify-between gap-2 text-sm">
+          <span className="font-medium">Combined score: {fmt(result.fused_score)}</span>
+          <span className="text-ink-soft">Cut-off {fmt(result.threshold, 2)} (chosen on validation images)</span>
+        </div>
+        <div
+          className="relative h-4 rounded-full"
+          style={{ background: "linear-gradient(90deg,#BFE3CB 0%,#F4E3A6 50%,#F2B38A 100%)" }}
+          role="img"
+          aria-label={`Combined score ${fmt(result.fused_score, 2)} on a scale from 0 to 1, cut-off ${fmt(result.threshold, 2)}`}
+        >
+          <div className="absolute -top-1.5 h-7 w-0.5 bg-ink" style={{ left: `${thr}%` }} />
+          <div
+            className="absolute -top-1 h-6 w-6 -translate-x-1/2 rounded-full border-4 border-ink bg-white"
+            style={{ left: `${pos}%` }}
+          />
+        </div>
+        <div className="mt-1 flex justify-between text-xs text-ink-soft">
+          <span>0 · normal-like</span>
+          <span>1 · more anomalous</span>
+        </div>
+      </div>
+
+      <div className="flex flex-wrap gap-4">
+        <Tile
+          title="Anomaly score"
+          value={fmt(result.anomaly_score, 4)}
+          sub={`${anomHigh ? "Above" : "Below"} typical cut-off ${fmt(result.anomaly_threshold, 4)}`}
+          subTone={anomHigh ? "text-amber-800" : "text-ink-soft"}
+          help={g.anomaly_score}
+        />
+        <Tile
+          title="Cup-to-disc ratio"
+          value={result.cdr === null ? "Unavailable" : fmt(result.cdr, 2)}
+          sub={
+            result.cdr === null
+              ? result.cdr_reason || "Could not be measured"
+              : `${cdrHigh ? "At or above" : "Below"} the ${fmt(result.cdr_reference, 2)} reference`
+          }
+          subTone={cdrHigh ? "text-amber-800" : "text-ink-soft"}
+          help={g.cdr}
+        />
+        <Tile
+          title="Confidence"
+          value={result.confidence_level}
+          sub={
+            result.signals_agree === null
+              ? "Based on the anomaly score only"
+              : result.signals_agree
+              ? "Anomaly score and CDR agree"
+              : "Anomaly score and CDR disagree"
+          }
+          subTone={result.signals_agree === false ? "text-amber-800" : "text-ink-soft"}
+          help={g.confidence}
+        />
+      </div>
+
+      {result.confidence_level === "Low" && (
+        <p className="rounded-lg bg-amber-50 px-4 py-3 text-[15px] text-amber-950">
+          Confidence is low: the score is close to the cut-off, so treat this result as unclear and have the image
+          reviewed.
+        </p>
+      )}
+
+      <section className="space-y-4 border-t border-line pt-6">
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <h3 className="m-0 text-base font-semibold">Annotated image generated by the model</h3>
+          <a
+            href={result.annotated_image}
+            download="annotated_fundus.png"
+            className="inline-flex min-h-[44px] items-center rounded-lg border border-gray-300 bg-white px-4 text-[15px] font-medium text-ink no-underline"
+          >
+            Download annotated image
+          </a>
+        </div>
+        <div className="flex flex-wrap gap-5">
+          {previewUrl && (
+            <figure className="m-0 flex-1 basis-60 space-y-2">
+              <img src={previewUrl} alt="The image you uploaded" className="w-full rounded-xl bg-black object-contain" />
+              <figcaption className="text-sm text-ink-soft">Original image</figcaption>
+            </figure>
+          )}
+          <figure className="m-0 flex-1 basis-60 space-y-2">
+            <img
+              src={result.annotated_image}
+              alt="The same image with the optic disc, cup and unusual regions outlined and labelled"
+              className="w-full rounded-xl bg-black object-contain"
+            />
+            <figcaption className="text-sm text-ink-soft">Annotated image</figcaption>
+          </figure>
+          <div className="flex-1 basis-56 space-y-2 text-[15px]">
+            <p className="m-0 font-medium">Legend</p>
+            <p className="m-0"><span className="mr-2 inline-block w-6 border-t-2 border-dashed border-red-500 align-middle" />A1, A2: high difference from healthy eyes</p>
+            <p className="m-0"><span className="mr-2 inline-block w-6 border-t-2 border-dashed border-amber-500 align-middle" />Moderate difference</p>
+            <p className="m-0"><span className="mr-2 inline-block w-6 border-t-2 border-teal-400 align-middle" />Optic disc outline</p>
+            <p className="m-0"><span className="mr-2 inline-block w-6 border-t-2 border-gray-400 align-middle" />Optic cup outline</p>
+            <p className="m-0 text-sm text-ink-soft">{g.regions?.read}</p>
+            {result.regions.length === 0 && (
+              <p className="m-0 text-sm text-ink-soft">No region stood out above the healthy-eye range.</p>
+            )}
+          </div>
+        </div>
+      </section>
+
+      <p className="text-xs text-ink-soft">
+        Models: {Object.entries(result.model_versions || {}).map(([k, v]) => `${k} ${v ?? "n/a"}`).join(" · ")}
+      </p>
+    </div>
+  );
+}

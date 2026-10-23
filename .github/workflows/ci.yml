@@ -1,0 +1,35 @@
+name: CI
+# Not yet run on GitHub: it was written without access to GitHub Actions. If a step fails, the log shows why.
+on:
+  push:
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Install (CPU PyTorch keeps it small)
+        run: |
+          pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+          pip install numpy pandas scikit-learn opencv-python-headless pillow pyyaml matplotlib flask
+      - name: Unit and API tests (includes the PyTorch tests)
+        run: python -m unittest discover -s tests -v
+      - name: Smoke test of the whole pipeline on synthetic data
+        run: python scripts/run_pipeline.py --quick
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+      - run: npm install
+      - run: npm run build

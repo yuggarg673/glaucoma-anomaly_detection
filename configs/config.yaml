@@ -1,0 +1,71 @@
+# All hyperparameters and paths live here. No magic numbers in code.
+seed: 42
+device: auto            # auto | cpu | cuda | mps
+
+paths:
+  data_raw: data/raw
+  data_splits: data/splits
+  checkpoints: checkpoints
+  results: results
+  logs: logs
+  db: data/predictions.sqlite3
+
+data:
+  source: acrima        # acrima | synthetic  (synthetic = fake images for smoke tests only)
+  acrima_dir: data/raw/acrima
+  refuge_dir: data/raw/refuge
+  synthetic_dir: data/raw/synthetic
+  image_size: 256       # autoencoder and baseline input size
+  seg_size: 256         # segmenter input size
+  split: {train: 0.70, val: 0.15, test: 0.15}
+  roi_crop: false       # ACRIMA images are already cropped around the optic disc
+
+autoencoder:
+  channels: [32, 64, 128, 256]
+  latent_channels: 64
+  skip_connections: false   # keep OFF: skips let the net copy anomalies through
+  lr: 0.001
+  batch_size: 16
+  epochs: 60
+  patience: 8
+
+baseline:
+  backbone: resnet18        # resnet18 | efficientnet_b0
+  pretrained: true          # needs internet once to download ImageNet weights
+  lr: 0.0001
+  batch_size: 16
+  epochs: 25
+  patience: 5
+
+segmenter:
+  base_channels: 16
+  lr: 0.001
+  batch_size: 8
+  epochs: 40
+  patience: 8
+
+fusion:
+  bootstrap: 1000           # resamples for the AUC confidence interval
+
+annotate:
+  moderate_percentile: 99.0 # pixel-error percentile on healthy validation images
+  high_percentile: 99.9
+  blur_sigma: 4
+  max_regions: 3
+  min_area_frac: 0.002
+
+cdr:
+  reference_cdr: 0.65       # value quoted in the G-EyeNet paper as glaucomatous
+
+api:
+  max_upload_mb: 10
+  min_image_side: 64
+  frontend_origin: "http://localhost:5173"
+
+# Applied on top of the config when you pass --quick (tiny synthetic smoke test)
+quick:
+  data: {source: synthetic, image_size: 64, seg_size: 64}
+  autoencoder: {epochs: 2, channels: [8, 16, 32], latent_channels: 8, batch_size: 8, patience: 2}
+  baseline: {epochs: 1, pretrained: false, batch_size: 8}
+  segmenter: {epochs: 2, base_channels: 8, batch_size: 4, patience: 2}
+  fusion: {bootstrap: 50}
