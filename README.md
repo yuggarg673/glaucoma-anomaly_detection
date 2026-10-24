@@ -50,6 +50,9 @@ python scripts/inspect_data.py            # verify counts and mask values  (see 
 python scripts/run_pipeline.py            # trains segmenter, autoencoder, baseline, fits fusion
 ```
 
+**No GPU or PyTorch on your computer?** Use `notebooks/train_on_colab.ipynb` in Google Colab (free GPU). It trains on
+both datasets and gives you a `trained_models.zip` to extract into this project. It has not been run yet either.
+
 Everything writes to `results/` (metrics, `tables/main_results.md`, figures) and `checkpoints/` (git-ignored).
 
 Run the app (two terminals):
