@@ -18,8 +18,9 @@ ICIP 2018), changed to use reconstruction error as the diagnostic signal and to 
 
 | Part | State |
 | --- | --- |
-| Config, data splits, CDR, fusion, metrics, annotated image, API, history, tests | Written **and tested** (31 tests pass) |
-| PyTorch models and training scripts (autoencoder, baseline, segmenter, fusion fitting) | Written, **not yet run**: the environment it was built in could not install PyTorch. 6 PyTorch tests exist and were skipped there. |
+| Config, data splits, CDR, fusion, metrics, annotated image, API, history | Written **and tested** (every test that needs no PyTorch passes) |
+| G1020 outlines to training masks (`prepare_segmentation_data.py`), segmenter augmentation, CDR sanity check | Written **and tested on fake G1020-style data**. The real G1020 download could not be reached, so its exact file layout is unverified (the converter reports every file it cannot use) |
+| PyTorch models and training scripts (autoencoder, baseline, segmenter, fusion fitting) | Written, **not yet run**: the environment it was built in could not install PyTorch. The PyTorch tests exist and were skipped there. |
 | React website | Written, **not yet built or opened in a browser** (no npm access there) |
 | Real datasets | Not included. You download them ([docs/DATA.md](docs/DATA.md)) |
 | Results (AUC etc.) | **None yet.** They appear in `results/` after you train on real data |
@@ -45,13 +46,14 @@ python scripts/run_pipeline.py --quick    # smoke test on synthetic drawings (nu
 Real run:
 
 ```bash
-python scripts/download_data.py           # ACRIMA automatic if possible; prints manual steps for REFUGE
+python scripts/download_data.py           # ACRIMA automatic if possible; prints manual steps for G1020
 python scripts/inspect_data.py            # verify counts and mask values  (see docs/DATA.md)
-python scripts/run_pipeline.py            # trains segmenter, autoencoder, baseline, fits fusion
+python scripts/run_pipeline.py            # prepares G1020 masks, trains segmenter (on G1020), autoencoder + baseline (on ACRIMA), fits fusion
+python scripts/preview_cdr.py             # LOOK at the disc/cup outlines drawn on ACRIMA images
 ```
 
 **No GPU or PyTorch on your computer?** Use `notebooks/train_on_colab.ipynb` in Google Colab (free GPU). It trains on
-both datasets and gives you a `trained_models.zip` to extract into this project. It has not been run yet either.
+ACRIMA + G1020 and gives you a `trained_models.zip` to extract into this project. It has not been run yet either.
 
 Everything writes to `results/` (metrics, `tables/main_results.md`, figures) and `checkpoints/` (git-ignored).
 
@@ -74,6 +76,12 @@ image --> autoencoder (healthy-only) --> reconstruction error --> anomaly score 
                                   |
                                   +--> annotated PNG (outlines, A1/A2 regions from the error map)
 ```
+
+**Where the cup-to-disc ratio comes from.** ACRIMA has no cup or disc outlines, so the U-Net is trained on **G1020**
+(which has them), then run on every ACRIMA image and on uploaded images. The ACRIMA ratio is therefore a *model
+estimate*, not an expert measurement. `python scripts/preview_cdr.py` draws the outlines on ACRIMA images so you can
+check them by eye, and the last pipeline step prints a **CDR CHECK** (is the ratio larger for glaucoma than for normal
+images? does it beat chance on its own?) and warns if not.
 
 Everything tunable is in `configs/config.yaml`. Thresholds and fusion weights are fitted on the **validation** split
 only; the test split is used once for reporting. See [docs/DECISIONS.md](docs/DECISIONS.md).
@@ -118,10 +126,10 @@ repository public.
 
 ## Limitations
 
-Small public datasets, no clinical validation, anomaly score also rises for poor image quality and other diseases, and
+The ACRIMA cup-to-disc ratio is estimated by a segmenter trained on G1020 (ACRIMA has no outlines), small public datasets, no clinical validation, anomaly score also rises for poor image quality and other diseases, and
 the annotated regions are where the image differs from healthy eyes, not confirmed lesions.
 
 ## References
 
 Pal, Moorthy, Shahina. *G-EyeNet*, IEEE ICIP 2018 (https://ieeexplore.ieee.org/document/8451029/).
-Diaz-Pinto et al., BioMedical Engineering OnLine 18:29, 2019 (ACRIMA). Orlando et al., arXiv:1910.03667 (REFUGE).
+Diaz-Pinto et al., BioMedical Engineering OnLine 18:29, 2019 (ACRIMA). Bajwa et al., IJCNN 2020 (G1020; verify citation). Orlando et al., arXiv:1910.03667 (REFUGE, optional).

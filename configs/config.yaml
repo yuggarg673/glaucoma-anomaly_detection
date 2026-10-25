@@ -14,6 +14,13 @@ data:
   source: acrima        # acrima | synthetic  (synthetic = fake images for smoke tests only)
   acrima_dir: data/raw/acrima
   refuge_dir: data/raw/refuge
+  # Where the disc/cup segmenter (which gives the cup-to-disc ratio) is trained.
+  # ACRIMA has no masks, so another dataset with masks is needed. refuge | g1020
+  seg_source: g1020
+  g1020_dir: data/raw/g1020
+  seg_processed_dir: data/processed/seg
+  seg_crop_scale: 2.5   # crop G1020 to this many disc-widths around the disc, to look like ACRIMA's disc-centred crops
+  seg_prepared_max_side: 512   # shrink larger crops to this many pixels (segmenter trains at seg_size anyway)
   synthetic_dir: data/raw/synthetic
   image_size: 256       # autoencoder and baseline input size
   seg_size: 256         # segmenter input size

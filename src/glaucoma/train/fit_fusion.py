@@ -11,9 +11,9 @@ from torch.utils.data import DataLoader  # noqa: F401  (kept for parity with oth
 
 from ..cdr import compute_cdr
 from ..config import resolve
-from ..data.datasets import ImageDataset
 from ..data.index import absolute
 from ..data.splits import load_split
+from ..eval.cdr_check import cdr_sanity
 from ..eval.fusion import FusionModel
 from sklearn.metrics import roc_auc_score
 
@@ -22,7 +22,7 @@ from ..eval.scoring import anomaly_score
 from ..models.autoencoder import build_autoencoder
 from ..models.segmenter import UNet
 from ..preprocessing import load_image, resize_square, to_chw, to_float01
-from ..utils import get_device, load_json, save_json, update_json
+from ..utils import load_json, save_json, update_json
 from .common import base_parser, ckpt_dir, init_run
 
 
@@ -79,12 +79,23 @@ def main():
     m_ae = compute_metrics(yt, st, fm.p["anom_raw_threshold"])
     m_ae["auc_ci95"] = bootstrap_auc_ci(yt, st, cfg["fusion"]["bootstrap"], cfg["seed"])
 
+    # Is the predicted CDR informative on this data? (ACRIMA has no outlines to check it against.)
+    cdr_info = cdr_sanity(cv, yv, ct, yt, fm.p.get("cdr_raw_threshold"), cfg["fusion"]["bootstrap"], cfg["seed"])
+    for msg in cdr_info["warnings"]:
+        log.warning("CDR CHECK: %s", msg)
+    log.info("CDR check: validation AUC %s, mean CDR normal %s vs glaucoma %s",
+             cdr_info["val_auc"], cdr_info["val_mean_cdr_normal"], cdr_info["val_mean_cdr_glaucoma"])
+
     out = resolve(cfg, "results") / ("quick" if cfg["quick_mode"] else "")
     update_json(out / "metrics.json", "autoencoder_only", {"test_metrics": m_ae})
     update_json(out / "metrics.json", "autoencoder_plus_cdr", {"test_metrics": m_fused})
+    update_json(out / "metrics.json", "cdr_check", cdr_info)
     all_m = load_json(out / "metrics.json")
     rows = [("Supervised baseline", all_m.get("baseline", {}).get("test_metrics")),
-            ("Autoencoder anomaly score only", m_ae), ("Autoencoder + CDR fusion", m_fused)]
+            ("Autoencoder anomaly score only", m_ae),
+            (f"CDR only (segmenter trained on {cfg['data'].get('seg_source', 'refuge')}; images with a CDR)",
+             cdr_info["test_metrics"]),
+            ("Autoencoder + CDR fusion", m_fused)]
     lines = ["| Method | Accuracy | Sensitivity | Specificity | AUC-ROC (95% CI) |", "| --- | --- | --- | --- | --- |"]
     for name, m in rows:
         if not m:

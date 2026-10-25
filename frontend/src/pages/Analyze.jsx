@@ -69,7 +69,7 @@ export default function Analyze() {
       <div className="space-y-2">
         <h1 className="m-0 font-serif text-4xl font-semibold">Check a retinal fundus image</h1>
         <p className="m-0 max-w-3xl text-lg text-ink-soft">
-          Upload a colour photo of the back of the eye, centred on the optic disc. New to this? Read{" "}
+          Upload a colour photo of the back of the eye, cropped close around the optic disc. New to this? Read{" "}
           <a href="#/guide" className="text-brand">how to read the results</a> first.
         </p>
       </div>

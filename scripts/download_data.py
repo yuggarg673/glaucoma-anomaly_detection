@@ -21,10 +21,11 @@ ACRIMA (open, no login):
   1. Open https://figshare.com/articles/dataset/CNNs_for_Automatic_Glaucoma_Assessment_using_Fundus_Images_An_Extensive_Validation/7613135
   2. Download the dataset files and unzip them so the images sit under:  {acrima}
      (Kaggle mirror, needs a free account: https://www.kaggle.com/datasets/toaharahmanratul/acrima-dataset)
-REFUGE (needs a free grand-challenge.org account, or the torrent mirror):
-  1. Official: https://refuge.grand-challenge.org   Mirror: https://hyper.ai/en/datasets/15858
-  2. Put the unzipped training/validation images and their ground-truth masks under:  {refuge}
-Then run:  python scripts/inspect_data.py   to verify counts and mask values.
+G1020 (disc and cup outlines, used to train the segmenter that gives the cup-to-disc ratio):
+  1. Official page: https://www.dfki.uni-kl.de/g1020   Kaggle copy (free account): https://www.kaggle.com/datasets/arnavjain1/glaucoma-datasets
+  2. Unzip it so the images and the annotation .json files sit under:  {g1020}
+  (REFUGE also works: set data.seg_source: refuge in configs/config.yaml and put it under {refuge})
+Then run:  python scripts/inspect_data.py   to verify what was found, then  python scripts/prepare_segmentation_data.py
 """
 
 
@@ -33,9 +34,9 @@ def main():
     p.add_argument("--config", default=None)
     a = p.parse_args()
     cfg = load_config(a.config)
-    acrima, refuge = data_path(cfg, "acrima_dir"), data_path(cfg, "refuge_dir")
+    acrima, refuge, g1020 = data_path(cfg, "acrima_dir"), data_path(cfg, "refuge_dir"), data_path(cfg, "g1020_dir")
     acrima.mkdir(parents=True, exist_ok=True)
-    refuge.mkdir(parents=True, exist_ok=True)
+    g1020.mkdir(parents=True, exist_ok=True)
     try:
         with urllib.request.urlopen(FIGSHARE_API, timeout=30) as r:
             files = json.load(r).get("files", [])
@@ -51,8 +52,8 @@ def main():
         print(f"ACRIMA files are in {acrima}")
     except Exception as exc:  # noqa: BLE001  deliberate: any network problem -> manual steps
         print(f"Automatic ACRIMA download failed: {exc}", file=sys.stderr)
-    print(MANUAL.format(acrima=acrima, refuge=refuge))
-    print("REFUGE is never downloaded automatically (terms must be accepted by you).")
+    print(MANUAL.format(acrima=acrima, refuge=refuge, g1020=g1020))
+    print("G1020 is not downloaded automatically (you accept its terms yourself).")
 
 
 if __name__ == "__main__":

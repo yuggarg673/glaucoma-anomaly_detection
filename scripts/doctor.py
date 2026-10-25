@@ -44,9 +44,17 @@ def main():
     except ImportError:
         pass
     for name, path, fix in [("ACRIMA data", data_path(cfg, "acrima_dir"), "python scripts/download_data.py"),
-                            ("REFUGE data", data_path(cfg, "refuge_dir"), "see docs/DATA.md")]:
+                            ("REFUGE data" if cfg["data"].get("seg_source") == "refuge" else "G1020 data",
+                             data_path(cfg, "refuge_dir" if cfg["data"].get("seg_source") == "refuge" else "g1020_dir"),
+                             "see docs/DATA.md")]:
         n = sum(1 for _ in path.rglob("*") if _.is_file()) if path.exists() else 0
         results.append(line(OK if n else WARN, f"{name}: {n} files in {path}", fix))
+    if cfg["data"].get("seg_source") == "g1020":
+        prepared = data_path(cfg, "seg_processed_dir") / "masks"
+        n = len(list(prepared.glob("*.png"))) if prepared.exists() else 0
+        results.append(line(OK if n >= 100 else WARN, f"prepared G1020 training masks: {n} in {prepared}"
+                            + ("" if n >= 100 else " (expected several hundred)"),
+                            "python scripts/prepare_segmentation_data.py"))
     sp = resolve(cfg, "data_splits")
     results.append(line(OK if (sp / "classification.csv").exists() else WARN, "split CSVs present", "python scripts/make_splits.py"))
     ck = resolve(cfg, "checkpoints")

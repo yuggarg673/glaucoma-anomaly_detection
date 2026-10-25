@@ -2,7 +2,9 @@
 
 Run this BEFORE training. It checks the assumptions the code makes:
   - ACRIMA: 705 images, 396 glaucoma, 309 normal; label inferred from '_g_' in the file name
-  - REFUGE: which pixel values the masks contain (code assumes cup=0, disc=128, background=255)
+  - G1020: which shape labels the annotation files use and how this code reads them (disc / cup / box / unknown)
+  - REFUGE (only if you use it instead of G1020): which pixel values the masks contain (code assumes cup=0, disc=128,
+    background=255)
 """
 import argparse
 from collections import Counter
@@ -12,7 +14,7 @@ import numpy as np
 
 import _bootstrap  # noqa: F401
 from glaucoma.config import REPO_ROOT, data_path, load_config
-from glaucoma.data.index import IMG_EXT, label_from_acrima_name
+from glaucoma.data.index import is_image_file, is_junk, label_from_acrima_name
 from glaucoma.preprocessing import load_image
 
 
@@ -25,7 +27,7 @@ def main():
 
     acrima = data_path(cfg, "acrima_dir")
     if acrima.exists():
-        files = sorted(f for f in acrima.rglob("*") if f.suffix.lower() in IMG_EXT)
+        files = sorted(f for f in acrima.rglob("*") if is_image_file(f))
         labels = Counter(label_from_acrima_name(f.name) for f in files)
         sizes = Counter(load_image(f).shape[:2] for f in files[:50])
         ok = (len(files), labels[1], labels[0]) == (705, 396, 309)
@@ -51,6 +53,39 @@ def main():
                   "`masks_from_refuge` in `src/glaucoma/cdr.py`.", ""]
     else:
         lines += ["## REFUGE", f"- NOT FOUND at `{refuge}`. See docs/DATA.md.", ""]
+
+    g = data_path(cfg, "g1020_dir")
+    if g.exists():
+        import json
+
+        from glaucoma.data.seg_prepare import classify_label
+        jsons = sorted(f for f in g.rglob("*.json") if not is_junk(f))
+        imgs = [f for f in g.rglob("*") if is_image_file(f)]
+        labels, shape_types, keys, errs = Counter(), Counter(), Counter(), 0
+        for jp in jsons[:200]:
+            try:
+                d = json.loads(jp.read_text(encoding="utf-8"))
+                keys.update(d.keys())
+                for sh in d.get("shapes", []):
+                    labels[str(sh.get("label"))] += 1
+                    shape_types[str(sh.get("shape_type"))] += 1
+            except Exception:
+                errs += 1
+        meaning = {lab: classify_label(lab) or "UNKNOWN (ignored)" for lab in labels}
+        folders = Counter(str(f.relative_to(g).parent) for f in g.rglob("*") if f.is_file())
+        lines += ["## G1020", f"- folder: `{g}`", f"- image files: {len(imgs)}",
+                  f"- json files: {len(jsons)} (expected about 1020)",
+                  f"- top-level keys in the first 200 json files: {dict(keys)}",
+                  f"- shape labels (count) and how the code reads them: "
+                  f"{ {k: (v, meaning[k]) for k, v in labels.items()} }",
+                  "  (the code needs both a `disc` and a `cup` reading; `box` shapes are ignored on purpose)",
+                  f"- shape types: {dict(shape_types)}",
+                  f"- unreadable json files among them: {errs}",
+                  f"- folders and how many files each holds: {dict(folders.most_common(12))}",
+                  "- if json is 0, or there is no `disc`/`cup` reading above, the annotations are in another format: "
+                  "send me this file.", ""]
+    else:
+        lines += ["## G1020", f"- NOT FOUND at `{g}`. See docs/DATA.md.", ""]
 
     out = REPO_ROOT / "docs" / "DATA_NOTES.md"
     out.parent.mkdir(exist_ok=True)

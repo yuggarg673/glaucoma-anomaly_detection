@@ -64,8 +64,9 @@ GLOSSARY = {
 }
 
 HOW_TO_USE = [
-    "Use a colour retinal fundus photograph (JPG or PNG) centred on the optic disc. Photos of a screen or printed "
-    "photos work poorly.",
+    "Use a colour retinal fundus photograph (JPG or PNG) cropped close around the optic disc, so the bright round "
+    "disc fills a large part of the picture. Wide photos of the whole back of the eye, photos of a screen, and "
+    "printed photos work poorly.",
     "Choose a sharp, well-lit image without heavy glare, dark corners over the disc, or eyelashes in front.",
     "Upload it on the Analyze page and wait a few seconds.",
     "Read the label first, then the scores, then look at the annotated image to see where the model looked.",
@@ -80,5 +81,8 @@ LIMITS = [
     "may be worse.",
     "Not clinically validated and not a medical device.",
     "The anomaly score also rises for image problems and for diseases other than glaucoma.",
+    "The cup-to-disc ratio is an estimate made by a model that learned to outline the disc and cup from a different "
+    "image collection. It was not measured by an expert on these images, and it is least reliable on wide photos "
+    "that are not cropped around the disc.",
     "Uploaded images are analysed in memory and not saved. Only the scores and file name are kept in the history.",
 ]

@@ -7,7 +7,7 @@ import torch
 from torch.utils.data import Dataset
 
 from ..cdr import masks_from_refuge
-from ..preprocessing import augment, load_image, resize_square, to_chw, to_float01
+from ..preprocessing import augment, augment_seg, load_image, resize_square, to_chw, to_float01
 from .index import absolute
 
 IMAGENET_MEAN = np.array([0.485, 0.456, 0.406], dtype=np.float32)
@@ -57,8 +57,8 @@ class SegDataset(Dataset):
             raise FileNotFoundError(f"Could not read mask: {row['mask']}")
         mask = cv2.resize(mask, (self.size, self.size), interpolation=cv2.INTER_NEAREST)
         disc, cup = masks_from_refuge(mask)
-        if self.train and self.rng.random() < 0.5:
-            img, disc, cup = img[:, ::-1], disc[:, ::-1], cup[:, ::-1]
+        if self.train:
+            img, disc, cup = augment_seg(img, disc, cup, self.rng)
         x = torch.from_numpy(np.ascontiguousarray(to_chw(to_float01(img))))
         y = torch.from_numpy(np.stack([disc, cup]).astype(np.float32).copy())
         return x, y

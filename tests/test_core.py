@@ -66,6 +66,293 @@ class CDRTests(unittest.TestCase):
         self.assertEqual(int(cup.sum()), 4)
 
 
+class SegPrepareTests(unittest.TestCase):
+    def _make(self, tmp, with_cup=True, h=300, w=400):
+        import json
+        import cv2
+        img = np.full((h, w, 3), 90, np.uint8)
+        cv2.imwrite(str(tmp / "img1.jpg"), img)
+        shapes = [{"label": "disc", "points": [[150, 100], [250, 100], [250, 200], [150, 200]]}]
+        if with_cup:
+            shapes.append({"label": "cup", "points": [[180, 130], [220, 130], [220, 170], [180, 170]]})
+        (tmp / "img1.json").write_text(json.dumps({"imageHeight": h, "imageWidth": w, "shapes": shapes}))
+
+    def test_convert_crop_and_cdr_roundtrip(self):
+        import tempfile
+        from pathlib import Path
+        import cv2
+        from glaucoma.data.seg_prepare import prepare_json_dataset
+        with tempfile.TemporaryDirectory() as t:
+            raw, out = Path(t) / "raw", Path(t) / "out"
+            raw.mkdir(); self._make(raw)
+            rep = prepare_json_dataset(raw, out, scale=2.5)
+            self.assertEqual(rep["written"], 1)
+            m = cv2.imread(str(out / "masks" / "g1020_img1.png"), cv2.IMREAD_GRAYSCALE)
+            im = cv2.imread(str(out / "images" / "g1020_img1.png"))
+            self.assertEqual(m.shape[:2], im.shape[:2])
+            self.assertEqual(m.shape[0], m.shape[1])           # square crop
+            self.assertEqual(m.shape[0], 252)                  # 2.5 x 101-pixel disc (polygon edges are inclusive)
+            disc, cup = masks_from_refuge(m)
+            r = compute_cdr(disc, cup)
+            self.assertAlmostEqual(r.value, 0.41, delta=0.02)  # 41 / 101 pixel heights
+
+    def test_missing_cup_is_reported_not_dropped_silently(self):
+        import tempfile
+        from pathlib import Path
+        from glaucoma.data.seg_prepare import prepare_json_dataset
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"; raw.mkdir(); self._make(raw, with_cup=False)
+            rep = prepare_json_dataset(raw, Path(t) / "out", scale=2.5)
+            self.assertEqual(rep["written"], 0)
+            self.assertIn("no cup polygon", rep["skipped"])
+
+    def test_bad_json_is_reported(self):
+        import tempfile
+        from pathlib import Path
+        from glaucoma.data.seg_prepare import prepare_json_dataset
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"; raw.mkdir()
+            (raw / "x.json").write_text("{\"not\": \"labelme\"}")
+            rep = prepare_json_dataset(raw, Path(t) / "out", scale=2.5)
+            self.assertEqual(rep["written"], 0)
+            self.assertTrue(any("unreadable" in k for k in rep["skipped"]))
+
+
+class SegPrepareHardeningTests(unittest.TestCase):
+    """Things that could silently ruin the segmenter's training data if the converter got them wrong."""
+    H, W = 300, 400
+    DISC = [[150, 100], [250, 100], [250, 200], [150, 200]]
+    CUP = [[180, 130], [220, 130], [220, 170], [180, 170]]
+
+    def _write(self, folder, stem, shapes, size=True, image_path=None, img_name=None, h=None, w=None):
+        import json
+        h, w = h or self.H, w or self.W
+        folder.mkdir(parents=True, exist_ok=True)
+        cv2.imwrite(str(folder / f"{img_name or stem}.jpg"), np.full((h, w, 3), 90, np.uint8))
+        data = {"shapes": shapes}
+        if size:
+            data.update(imageHeight=h, imageWidth=w)
+        if image_path:
+            data["imagePath"] = image_path
+        (folder / f"{stem}.json").write_text(json.dumps(data))
+
+    def _prepare(self, raw, **kw):
+        from glaucoma.data.seg_prepare import prepare_json_dataset
+        return prepare_json_dataset(raw, raw.parent / "out", scale=2.5, **kw)
+
+    def test_bounding_boxes_are_never_read_as_the_disc(self):
+        from glaucoma.data.seg_prepare import classify_label
+        self.assertEqual(classify_label("disc_bbox"), "box")
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            shapes = [{"label": "disc", "points": self.DISC}, {"label": "cup", "points": self.CUP},
+                      {"label": "disc", "shape_type": "rectangle", "points": [[20, 20], [380, 280]]},
+                      {"label": "disc_bbox", "points": [[10, 10], [390, 10], [390, 290], [10, 290]]}]
+            self._write(raw, "img1", shapes)
+            rep = self._prepare(raw)
+            self.assertEqual(rep["written"], 1)
+            self.assertEqual(rep["ignored_boxes"], 2)
+            m = cv2.imread(str(Path(t) / "out" / "masks" / "g1020_img1.png"), cv2.IMREAD_GRAYSCALE)
+            r = compute_cdr(*masks_from_refuge(m))
+            self.assertAlmostEqual(r.value, 0.41, delta=0.02)   # unchanged by the two boxes
+
+    def test_several_label_spellings_are_understood(self):
+        from glaucoma.data.seg_prepare import classify_label
+        for lab in ("disc", "Disc", "disk", "OD", "optic_disc", "Optic Disc", "OpticDisc"):
+            self.assertEqual(classify_label(lab), "disc", lab)
+        for lab in ("cup", "Cup", "OC", "optic_cup", "Optic Cup", "OpticCup"):
+            self.assertEqual(classify_label(lab), "cup", lab)
+        self.assertIsNone(classify_label("macula"))
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            self._write(raw, "a", [{"label": "OD", "points": self.DISC}, {"label": "OC", "points": self.CUP}])
+            self.assertEqual(self._prepare(raw)["written"], 1)
+
+    def test_cup_outside_disc_is_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            far_cup = [[300, 220], [340, 220], [340, 260], [300, 260]]
+            self._write(raw, "a", [{"label": "disc", "points": self.DISC}, {"label": "cup", "points": far_cup}])
+            rep = self._prepare(raw)
+            self.assertEqual(rep["written"], 0)
+            self.assertIn("cup polygon is not inside the disc polygon", rep["skipped"])
+
+    def test_missing_disc_is_rejected_not_replaced_by_the_cup(self):
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            self._write(raw, "a", [{"label": "cup", "points": self.CUP}])
+            rep = self._prepare(raw)
+            self.assertEqual(rep["written"], 0)
+            self.assertIn("no disc polygon", rep["skipped"])
+
+    def test_image_found_through_image_path_when_names_differ(self):
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            self._write(raw, "ann1", [{"label": "disc", "points": self.DISC}, {"label": "cup", "points": self.CUP}],
+                        image_path="C:\\data\\Images\\pic1.jpg", img_name="pic1")
+            self.assertEqual(self._prepare(raw)["written"], 1)
+
+    def test_polygon_outside_image_is_rejected(self):
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            far = [[[1000, 100], [1100, 100], [1100, 200], [1000, 200]]][0]
+            self._write(raw, "a", [{"label": "disc", "points": far}, {"label": "cup", "points": far}], size=False)
+            rep = self._prepare(raw)
+            self.assertEqual(rep["written"], 0)
+            self.assertTrue(any("outside the image" in k for k in rep["skipped"]))
+
+    def test_large_crops_are_shrunk_and_masks_keep_three_values(self):
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            disc = [[500, 300], [1100, 300], [1100, 900], [500, 900]]
+            cup = [[700, 500], [900, 500], [900, 700], [700, 700]]
+            self._write(raw, "big", [{"label": "disc", "points": disc}, {"label": "cup", "points": cup}], h=1200, w=1600)
+            rep = self._prepare(raw, max_side=512)
+            self.assertEqual(rep["written"], 1)
+            m = cv2.imread(str(Path(t) / "out" / "masks" / "g1020_big.png"), cv2.IMREAD_GRAYSCALE)
+            im = cv2.imread(str(Path(t) / "out" / "images" / "g1020_big.png"))
+            self.assertEqual(m.shape, (512, 512))
+            self.assertEqual(im.shape[:2], (512, 512))
+            self.assertTrue(set(np.unique(m).tolist()) <= {0, 128, 255})
+            r = compute_cdr(*masks_from_refuge(m))
+            self.assertAlmostEqual(r.value, 201 / 601, delta=0.02)
+
+    def test_same_name_in_two_folders_picks_the_one_matching_the_annotation_size(self):
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            shapes = [{"label": "disc", "points": self.DISC}, {"label": "cup", "points": self.CUP}]
+            (raw / "a").mkdir(parents=True)
+            cv2.imwrite(str(raw / "a" / "x.jpg"), np.full((200, 200, 3), 90, np.uint8))   # same name, wrong size, sorts first
+            self._write(raw / "b", "x", shapes)                                           # right size + the annotation
+            rep = self._prepare(raw)
+            self.assertEqual(rep["written"], 1)           # would be 0 ("size differs") if the wrong file were picked
+            self.assertEqual(rep["ambiguous_names"], [])
+
+    def test_same_name_without_annotation_size_is_flagged_as_ambiguous(self):
+        with tempfile.TemporaryDirectory() as t:
+            raw = Path(t) / "raw"
+            shapes = [{"label": "disc", "points": self.DISC}, {"label": "cup", "points": self.CUP}]
+            (raw / "a").mkdir(parents=True)
+            cv2.imwrite(str(raw / "a" / "x.jpg"), np.full((300, 400, 3), 90, np.uint8))
+            self._write(raw / "b", "x", shapes, size=False)
+            rep = self._prepare(raw)
+            self.assertEqual(rep["ambiguous_names"], ["x"])
+
+
+class AugmentSegTests(unittest.TestCase):
+    def _data(self, size=96):
+        img = np.zeros((size, size, 3), np.uint8)
+        img[:] = (60, 40, 30)
+        disc = np.zeros((size, size), np.uint8)
+        cup = np.zeros_like(disc)
+        cv2.circle(disc, (48, 48), 24, 1, -1)
+        cv2.circle(cup, (48, 48), 10, 1, -1)
+        img[disc > 0] = (200, 150, 90)
+        img[cup > 0] = (240, 220, 180)
+        return img, disc, cup
+
+    def test_identity_when_everything_is_switched_off(self):
+        from glaucoma.preprocessing import augment_seg
+        img, d, c = self._data()
+        i2, d2, c2 = augment_seg(img, d, c, np.random.default_rng(0), scale=(1, 1), rot=0, shift=0,
+                                 colour=False, flip=False)
+        np.testing.assert_array_equal(i2, img)
+        np.testing.assert_array_equal(d2, d)
+        np.testing.assert_array_equal(c2, c)
+
+    def test_masks_stay_binary_cup_stays_inside_disc(self):
+        from glaucoma.preprocessing import augment_seg
+        img, d, c = self._data()
+        for seed in range(30):
+            i2, d2, c2 = augment_seg(img, d, c, np.random.default_rng(seed))
+            self.assertEqual(i2.dtype, np.uint8)
+            self.assertEqual(i2.shape, img.shape)
+            self.assertTrue(set(np.unique(d2).tolist()) <= {0, 1})
+            self.assertTrue(set(np.unique(c2).tolist()) <= {0, 1})
+            self.assertEqual(int((c2 > d2).sum()), 0, f"cup outside disc for seed {seed}")
+
+    def test_deterministic_for_a_given_seed(self):
+        from glaucoma.preprocessing import augment_seg
+        img, d, c = self._data()
+        a = augment_seg(img, d, c, np.random.default_rng(5))
+        b = augment_seg(img, d, c, np.random.default_rng(5))
+        for x, y in zip(a, b):
+            np.testing.assert_array_equal(x, y)
+
+    def test_masks_move_with_the_image(self):
+        from glaucoma.preprocessing import augment_seg
+        img, d, c = self._data()
+        for seed in range(20):
+            i2, d2, _ = augment_seg(img, d, c, np.random.default_rng(seed), colour=False)
+            if d2.sum() > 50:
+                self.assertGreater(float(i2[d2 > 0].mean()), float(i2[d2 == 0].mean()), f"seed {seed}")
+
+    def test_it_really_changes_size_and_colour(self):
+        from glaucoma.preprocessing import augment_seg
+        img, d, c = self._data()
+        areas, means = set(), set()
+        for seed in range(15):
+            i2, d2, _ = augment_seg(img, d, c, np.random.default_rng(seed))
+            areas.add(int(d2.sum()))
+            means.add(round(float(i2.mean()), 1))
+        self.assertGreater(len(areas), 8)
+        self.assertGreater(len(means), 8)
+
+
+class CDRCheckTests(unittest.TestCase):
+    @staticmethod
+    def _data(rng, shift=0.3, n=60, sd=0.08):
+        y = np.r_[np.zeros(n), np.ones(n)].astype(int)
+        c = np.r_[rng.normal(0.4, sd, n), rng.normal(0.4 + shift, sd, n)]
+        return c, y
+
+    def test_informative_ratio_gives_no_warnings(self):
+        from glaucoma.eval.cdr_check import cdr_sanity
+        rng = np.random.default_rng(0)
+        cv, yv = self._data(rng)
+        ct, yt = self._data(rng)
+        info = cdr_sanity(cv, yv, ct, yt, threshold=0.55, n_boot=50)
+        self.assertGreater(info["val_auc"], 0.9)
+        self.assertEqual(info["warnings"], [])
+        self.assertIsNotNone(info["test_metrics"])
+        self.assertGreater(info["val_mean_cdr_glaucoma"], info["val_mean_cdr_normal"])
+
+    def test_uninformative_ratio_warns_about_chance(self):
+        from glaucoma.eval.cdr_check import cdr_sanity
+        rng = np.random.default_rng(1)
+        cv, yv = self._data(rng, shift=0.0)
+        ct, yt = self._data(rng, shift=0.0)
+        info = cdr_sanity(cv, yv, ct, yt, threshold=0.4, n_boot=50)
+        self.assertTrue(any("close to chance" in m for m in info["warnings"]), info["warnings"])
+
+    def test_inverted_ratio_is_called_inverted(self):
+        from glaucoma.eval.cdr_check import cdr_sanity
+        rng = np.random.default_rng(2)
+        cv, yv = self._data(rng, shift=-0.3)
+        ct, yt = self._data(rng, shift=-0.3)
+        info = cdr_sanity(cv, yv, ct, yt, threshold=0.4, n_boot=50)
+        self.assertTrue(any("INVERTED" in m for m in info["warnings"]), info["warnings"])
+
+    def test_many_missing_values_warn(self):
+        from glaucoma.eval.cdr_check import cdr_sanity
+        rng = np.random.default_rng(3)
+        cv, yv = self._data(rng)
+        ct, yt = self._data(rng)
+        cv[::2] = np.nan
+        info = cdr_sanity(cv, yv, ct, yt, threshold=0.55, n_boot=50)
+        self.assertAlmostEqual(info["unavailable_val"], 0.5)
+        self.assertTrue(any("No cup-to-disc ratio could be computed" in m for m in info["warnings"]))
+
+    def test_all_missing_does_not_crash(self):
+        from glaucoma.eval.cdr_check import cdr_sanity
+        y = np.array([0, 1] * 20)
+        nan = np.full(40, np.nan)
+        info = cdr_sanity(nan, y, nan, y, threshold=None, n_boot=10)
+        self.assertIsNone(info["val_auc"])
+        self.assertIsNone(info["test_metrics"])
+        self.assertTrue(info["warnings"])
+
+
 class MetricsFusionTests(unittest.TestCase):
     def setUp(self):
         rng = np.random.default_rng(0)
@@ -189,6 +476,24 @@ class SplitTests(unittest.TestCase):
         df = pd.DataFrame({"path": ["a", "a"], "split": ["train", "test"]})
         with self.assertRaises(AssertionError):
             assert_no_leakage(df, "path")
+
+    def test_macos_zip_junk_is_not_treated_as_images(self):
+        from glaucoma.data.index import classification_index, is_junk
+        with tempfile.TemporaryDirectory() as d:
+            root = Path(d) / "acrima"
+            (root / "__MACOSX").mkdir(parents=True)
+            cv2.imwrite(str(root / "Im001_ACRIMA.png"), np.full((32, 32, 3), 80, np.uint8))
+            cv2.imwrite(str(root / "Im002_g_ACRIMA.png"), np.full((32, 32, 3), 90, np.uint8))
+            (root / "__MACOSX" / "._Im001_ACRIMA.png").write_bytes(b"\x00\x05\x16\x07 not an image")
+            (root / "._Im002_g_ACRIMA.png").write_bytes(b"\x00\x05\x16\x07 not an image")
+            (root / ".DS_Store").write_bytes(b"x")
+            cfg = load_config()
+            cfg["data"]["source"], cfg["data"]["acrima_dir"] = "acrima", str(root)
+            df = classification_index(cfg)
+            self.assertEqual(sorted(Path(p).name for p in df.path), ["Im001_ACRIMA.png", "Im002_g_ACRIMA.png"])
+            self.assertEqual(df.sort_values("path").label.tolist(), [0, 1])
+            self.assertTrue(is_junk(root / "__MACOSX" / "x.jpg"))
+            self.assertFalse(is_junk(root / "Im001_ACRIMA.png"))
 
     def test_acrima_label_rule(self):
         from glaucoma.data.index import label_from_acrima_name
@@ -334,6 +639,23 @@ class TorchTests(unittest.TestCase):
         self.assertEqual(tuple(out.shape), (2, 2, 32, 32))
         perfect = torch.full((1, 2, 8, 8), 20.0)
         self.assertAlmostEqual(float(dice_score(perfect, torch.ones(1, 2, 8, 8)).mean()), 1.0, places=3)
+
+    def test_seg_dataset_train_targets_are_binary_and_cup_inside_disc(self):
+        from glaucoma.data.datasets import SegDataset
+        import pandas as pd
+        with tempfile.TemporaryDirectory() as d:
+            generate(Path(d) / "syn", n=6, size=64, seed=3)
+            imgs = sorted((Path(d) / "syn" / "images").glob("*.png"))
+            df = pd.DataFrame({"image": [str(p) for p in imgs],
+                               "mask": [str(Path(d) / "syn" / "masks" / p.name) for p in imgs]})
+            for train in (False, True):
+                ds = SegDataset(df, 64, train=train, seed=0)
+                for i in range(len(ds)):
+                    x, y = ds[i]
+                    self.assertEqual(tuple(x.shape), (3, 64, 64))
+                    self.assertEqual(tuple(y.shape), (2, 64, 64))
+                    self.assertTrue(set(y.unique().tolist()) <= {0.0, 1.0})
+                    self.assertEqual(int((y[1] > y[0]).sum()), 0)   # cup (channel 1) lies inside disc (channel 0)
 
     def test_autoencoder_training_set_has_no_glaucoma(self):
         from glaucoma.data.datasets import ImageDataset

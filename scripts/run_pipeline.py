@@ -1,7 +1,7 @@
 """Run the whole pipeline in order. Works on Windows, macOS and Linux (no make needed).
 
   python scripts/run_pipeline.py --quick     # synthetic smoke test, minutes
-  python scripts/run_pipeline.py             # real data (ACRIMA + REFUGE must be in data/raw)
+  python scripts/run_pipeline.py             # real data (ACRIMA + G1020 must be in data/raw)
 """
 import argparse
 import subprocess
@@ -29,6 +29,7 @@ def main():
         run([py, "scripts/make_synthetic_data.py"] + extra)
     else:
         run([py, "scripts/inspect_data.py"] + extra)
+        run([py, "scripts/prepare_segmentation_data.py"] + extra)
     run([py, "scripts/make_splits.py"] + q + extra)
     run([py, "-m", "glaucoma.train.train_segmenter"] + q + extra)
     run([py, "-m", "glaucoma.train.train_autoencoder"] + q + extra)
