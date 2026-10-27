@@ -19,6 +19,8 @@ Logs of every training script are in `logs/`.
 | `Input size ... must be divisible by ...` | `image_size` not a multiple of 2^(number of autoencoder stages), or of 8 for the segmenter | Use 256 (or any multiple of 16) |
 | Autoencoder AUC close to 0.5 | Model redraws glaucoma images as well as healthy ones | Try fewer latent channels, keep `skip_connections: false`, check image quality, then report it honestly |
 | `Missing checkpoints: ...` / `/health` says degraded | Models not trained yet | `python scripts/run_pipeline.py`, then restart the API |
+| `start_website.bat` says "Python 3.10 or newer was not found" | Python is missing, too old, or not on PATH (the Microsoft Store "python" shortcut does not count) | Install Python 3.10+ from python.org, tick **Add python.exe to PATH**, then double-click the file again |
+| The launcher stops during "Installing the requirements" | No internet, or the large PyTorch download was interrupted | Run it again (finished downloads are reused). If it keeps failing, delete the `.venv` folder and follow the README's manual steps |
 | `Cannot reach the analysis server` in the website | The server is not running, or the page was opened as a file | `python -m backend.app`, then open **http://localhost:5000** (not `web/index.html` by double-click) |
 | `ModuleNotFoundError: No module named 'glaucoma'` or `'backend'` | Started from the wrong folder | Run it from the project folder: `python -m backend.app` (it finds `src/` by itself) |
 | Website opens but says "models not loaded" | No checkpoints yet | `python scripts/run_pipeline.py` (or the Colab notebook), copy `checkpoints/` next to `backend/`, restart |

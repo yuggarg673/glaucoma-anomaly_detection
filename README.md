@@ -32,6 +32,12 @@ run) and `python scripts/run_pipeline.py --quick`. If something breaks, `docs/TR
 
 ## Run the website
 
+**Easiest:** double-click `start_website.bat` (Windows), or run `bash start_website.sh` (Mac/Linux). The first run sets
+everything up by itself (a few minutes: PyTorch is a large download), then opens the website in your browser at
+http://localhost:5000. Later runs start in seconds. (Needs Python 3.10+ from python.org; on Windows tick "Add python.exe to PATH".)
+
+Or by hand:
+
 ```bash
 pip install -r requirements.txt
 python -m backend.app --open              # website and API on http://localhost:5000
@@ -111,6 +117,7 @@ only; the test split is used once for reporting. See [docs/DECISIONS.md](docs/DE
 ```
 configs/config.yaml        all hyperparameters and paths
 src/glaucoma/              library: data, models, training, eval, cdr, inference
+start_website.bat / .sh    one-click launchers (create .venv, install requirements once, start the website)
 backend/                   Flask app: serves the website and the API (app.py), SQLite history (db.py), explanations (glossary.py)
 web/                       the website: index.html + assets/ (plain HTML, CSS and JavaScript; no build step)
 frontend/                  optional React + Vite + Tailwind version (never built; not needed)

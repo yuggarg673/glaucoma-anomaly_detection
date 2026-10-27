@@ -722,6 +722,18 @@ class WebsiteTests(unittest.TestCase):
         self.assertEqual(r.get_json()["error"]["code"], "website_missing")
         self.assertEqual(client.get("/health").status_code, 200)
 
+    def test_launchers_exist_and_the_shell_one_parses(self):
+        """start_website.bat / .sh are what a student double-clicks. The .bat cannot be run here, the .sh is syntax-checked."""
+        import shutil
+        import subprocess
+        sh, bat = ROOT / "start_website.sh", ROOT / "start_website.bat"
+        self.assertTrue(sh.is_file() and bat.is_file())
+        self.assertIn("backend.app", sh.read_text(encoding="utf-8"))
+        self.assertIn("backend.app", bat.read_text(encoding="utf-8"))
+        if shutil.which("bash"):
+            done = subprocess.run(["bash", "-n", str(sh)], capture_output=True, text=True, timeout=30)
+            self.assertEqual(done.returncode, 0, done.stderr)
+
     def test_backend_can_be_started_from_a_clean_shell(self):
         """`python -m backend.app` must not need PYTHONPATH or an install (it did once: ModuleNotFoundError)."""
         import os

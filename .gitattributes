@@ -2,3 +2,5 @@
 *.png binary
 *.jpg binary
 *.pt binary
+*.bat -text
+*.sh text eol=lf
