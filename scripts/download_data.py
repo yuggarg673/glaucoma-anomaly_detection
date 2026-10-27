@@ -8,7 +8,6 @@ import json
 import sys
 import urllib.request
 import zipfile
-from pathlib import Path
 
 import _bootstrap  # noqa: F401
 from glaucoma.config import data_path, load_config

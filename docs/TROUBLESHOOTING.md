@@ -19,13 +19,21 @@ Logs of every training script are in `logs/`.
 | `Input size ... must be divisible by ...` | `image_size` not a multiple of 2^(number of autoencoder stages), or of 8 for the segmenter | Use 256 (or any multiple of 16) |
 | Autoencoder AUC close to 0.5 | Model redraws glaucoma images as well as healthy ones | Try fewer latent channels, keep `skip_connections: false`, check image quality, then report it honestly |
 | `Missing checkpoints: ...` / `/health` says degraded | Models not trained yet | `python scripts/run_pipeline.py`, then restart the API |
-| `Cannot reach the analysis server` in the website | Backend not running or wrong URL | `python -m backend.app`; set `VITE_API_BASE_URL` in `frontend/.env` |
-| Browser CORS error | Frontend served from a different address | Set `api.frontend_origin` in `configs/config.yaml` to the exact address (default `http://localhost:5173`) |
-| `Address already in use` | Port taken | `python -m backend.app --port 5001` and update `VITE_API_BASE_URL` |
+| `Cannot reach the analysis server` in the website | The server is not running, or the page was opened as a file | `python -m backend.app`, then open **http://localhost:5000** (not `web/index.html` by double-click) |
+| `ModuleNotFoundError: No module named 'glaucoma'` or `'backend'` | Started from the wrong folder | Run it from the project folder: `python -m backend.app` (it finds `src/` by itself) |
+| Website opens but says "models not loaded" | No checkpoints yet | `python scripts/run_pipeline.py` (or the Colab notebook), copy `checkpoints/` next to `backend/`, restart |
+| Red banner "These are test models" / pill says TEST models | The checkpoints came from `--quick` (synthetic drawings) | Delete `checkpoints/`, run `python scripts/run_pipeline.py` (real data), restart |
+| Page shows only "This website needs JavaScript" or stays blank | JavaScript off, or the script failed to load | Turn JavaScript on; press F12 and read the Console; hard-reload (Ctrl+Shift+R). `GET /assets/app.js` must return 200 |
+| JSON `website_missing` at `/` | The `web/` folder is missing or you ran from another folder | Run from the project root; check that `web/index.html` exists (`git status`) |
+| Text looks different from the screenshots | Google Fonts blocked or offline | Harmless: the page falls back to system fonts |
+| Result takes very long | Large image on a slow CPU | The server analyses one image at a time; wait, or use a smaller image. The page gives up after 3 minutes |
+| `Address already in use` | Port taken | `python -m backend.app --port 5001` and open `http://localhost:5001` |
+| Colab: the website does not open | Pop-up blocked, or the server cell failed | Run the "show it inside the notebook" cell, or read `server.log` printed by the launch cell |
+| Browser CORS error (only with the optional React app) | React dev server on a different address | Set `api.frontend_origin` in `configs/config.yaml` to the exact address (default `http://localhost:5173`) |
 | 413 on upload | File over the size limit | Raise `api.max_upload_mb` or use a smaller image |
-| 422 `unreadable_image` | Not a real JPG/PNG | Re-export the image |
+| 422 `unreadable_image` | Not a real JPG/PNG, or a picture with more than 64 million pixels (refused before decoding, for memory safety) | Re-export the image, or shrink it. The limit is `api.max_image_pixels` in `configs/config.yaml` |
 | `CDR unavailable` for many images | Segmenter not good enough, or the image is a wide photo (disc small) | Check Dice in `results/metrics.json`; use images cropped around the disc; see `results/cdr_preview/` |
-| `npm install` fails | No internet / old Node | Use Node 18 or newer and check your network |
+| `npm install` fails | Only the optional React app needs it | Ignore it and use `python -m backend.app`, or use Node 18+ and check your network |
 | Results look too good | Possible data leakage or tiny test set | Check `data/splits/classification.csv`; report the confidence interval |
 
 ## `--quick` mode

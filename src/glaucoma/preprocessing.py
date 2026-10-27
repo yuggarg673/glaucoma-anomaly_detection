@@ -1,10 +1,15 @@
 """Image loading and preprocessing (numpy/OpenCV only, no PyTorch needed)."""
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import cv2
 import numpy as np
+
+# A small PNG can declare an enormous picture (a "decompression bomb") that would need gigabytes of memory to decode.
+# Fundus photos are a few megapixels, so anything over this is refused before it is decoded.
+MAX_UPLOAD_PIXELS = 64_000_000
 
 
 class ImageDecodeError(ValueError):
@@ -22,11 +27,25 @@ def load_image(path: str | Path) -> np.ndarray:
     return cv2.cvtColor(img, cv2.COLOR_BGR2RGB)
 
 
-def decode_image_bytes(data: bytes) -> np.ndarray:
+def declared_size(data: bytes):
+    """(width, height) read from the file header without decoding the pixels, or None if it cannot be read."""
+    try:
+        from PIL import Image
+        with Image.open(io.BytesIO(data)) as im:
+            return im.size
+    except Exception:       # not readable by Pillow (or Pillow missing): the real decoder below decides
+        return None
+
+
+def decode_image_bytes(data: bytes, max_pixels: int = MAX_UPLOAD_PIXELS) -> np.ndarray:
     """Decode uploaded bytes (jpg/png) as RGB uint8."""
     arr = np.frombuffer(data, dtype=np.uint8)
     if arr.size == 0:
         raise ImageDecodeError("The uploaded file is empty.")
+    size = declared_size(data)
+    if size is not None and size[0] * size[1] > max_pixels:
+        raise ImageDecodeError(f"The image is {size[0]}x{size[1]} pixels, which is more than this tool accepts "
+                               f"({max_pixels // 1_000_000} million pixels). Please shrink it first.")
     img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
     if img is None:
         raise ImageDecodeError("The file is not a readable JPG or PNG image.")

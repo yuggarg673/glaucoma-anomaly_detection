@@ -55,6 +55,10 @@ def main():
         results.append(line(OK if n >= 100 else WARN, f"prepared G1020 training masks: {n} in {prepared}"
                             + ("" if n >= 100 else " (expected several hundred)"),
                             "python scripts/prepare_segmentation_data.py"))
+    web = REPO_ROOT / "web"
+    missing_web = [f for f in ("index.html", "assets/app.js", "assets/styles.css") if not (web / f).is_file()]
+    results.append(line(OK if not missing_web else FAIL, "website files in web/" + (f" (missing: {', '.join(missing_web)})" if missing_web else ""),
+                        "restore the web/ folder from git (git checkout -- web)"))
     sp = resolve(cfg, "data_splits")
     results.append(line(OK if (sp / "classification.csv").exists() else WARN, "split CSVs present", "python scripts/make_splits.py"))
     ck = resolve(cfg, "checkpoints")
@@ -63,10 +67,19 @@ def main():
     try:
         with urllib.request.urlopen(a.api + "/health", timeout=3) as r:
             h = json.load(r)
-        results.append(line(OK if h.get("models_loaded") else WARN, f"API reachable, models_loaded={h.get('models_loaded')}",
+        results.append(line(OK if h.get("models_loaded") else WARN, f"server reachable, models_loaded={h.get('models_loaded')}",
                             h.get("detail", "")))
+        if h.get("models_loaded") and h.get("test_models"):
+            results.append(line(WARN, "the loaded models are TEST models (trained on synthetic drawings): results are meaningless",
+                                "delete checkpoints/ and run python scripts/run_pipeline.py on the real data"))
+        try:
+            with urllib.request.urlopen(a.api + "/", timeout=3) as r:
+                page_ok = r.status == 200 and b"<title>" in r.read(4096)
+            results.append(line(OK if page_ok else FAIL, f"website served at {a.api}/", "check that web/index.html exists"))
+        except Exception as exc:
+            results.append(line(FAIL, f"website not served at {a.api}/ ({type(exc).__name__})", "check that web/index.html exists"))
     except Exception:
-        results.append(line(WARN, f"API not reachable at {a.api}", "python -m backend.app"))
+        results.append(line(WARN, f"server not reachable at {a.api}", "python -m backend.app  (then open http://localhost:5000)"))
     print(f"\n{results.count(OK)} passed, {results.count(WARN)} warnings, {results.count(FAIL)} failed")
     sys.exit(1 if FAIL in results else 0)
 

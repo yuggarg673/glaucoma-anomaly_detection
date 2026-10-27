@@ -8,7 +8,6 @@ Run this BEFORE training. It checks the assumptions the code makes:
 """
 import argparse
 from collections import Counter
-from pathlib import Path
 
 import numpy as np
 

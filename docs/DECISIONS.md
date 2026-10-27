@@ -34,3 +34,16 @@
   near chance or inverted. It cannot prove the outlines are right; `scripts/preview_cdr.py` is the visual check.
 - **Disc-centred crops only.** The app has no disc-finding stage, so it expects photos cropped around the optic disc like
   ACRIMA's. Wide fundus photographs make the disc small and the CDR unreliable. A disc-localisation step is future work.
+- **The website is plain HTML, CSS and JavaScript in `web/`, served by Flask.** The user asked for a working website. A
+  React/Vite app needs Node, `npm install` and a second terminal, none of which could be tried where this was built. The
+  plain version has one command (`python -m backend.app`), no build, no dependencies, and uses relative URLs so it also
+  works behind Colab's proxy. The page is built with `textContent` only (never `innerHTML`) and a strict content security
+  policy (`script-src 'self'`, no inline script or style), and tests enforce both. The React version stays as an optional
+  extra; it was never built.
+- **Models trained on synthetic data are flagged, not hidden.** `--quick` writes real-looking checkpoints from drawings. The
+  analyzer reads what each checkpoint was trained on, `/health` and every result say `test_models: true`, and the website
+  shows a red warning on every page and result. Without this, a code-check run could be mistaken for a working screener.
+- **The website was checked with invented model outputs.** PyTorch could not be installed where the site was built, so
+  `tests/standin.py` supplies an error map and disc/cup masks and runs everything after the networks for real (CDR,
+  fusion, confidence, annotated image, response). It lives in `tests/` only, labels itself "stand-in (test only)", and the
+  app never imports it.

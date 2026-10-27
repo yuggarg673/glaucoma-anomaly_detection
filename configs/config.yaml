@@ -60,12 +60,14 @@ annotate:
   blur_sigma: 4
   max_regions: 3
   min_area_frac: 0.002
+  max_output_side: 1280     # the annotated picture sent to the website is shrunk to at most this many pixels
 
 cdr:
   reference_cdr: 0.65       # value quoted in the G-EyeNet paper as glaucomatous
 
 api:
   max_upload_mb: 10
+  max_image_pixels: 64000000   # refuse pictures with more pixels than this before decoding them (memory safety)
   min_image_side: 64
   frontend_origin: "http://localhost:5173"
 

@@ -1,0 +1,41 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 420" width="420" height="420" role="img" aria-label="Illustration of a retinal photo with the optic disc and cup outlined and two regions marked">
+  <defs>
+    <radialGradient id="fundus" cx="46%" cy="48%" r="62%">
+      <stop offset="0" stop-color="#F0A25A"/>
+      <stop offset="0.65" stop-color="#D2682F"/>
+      <stop offset="1" stop-color="#8E2F17"/>
+    </radialGradient>
+    <radialGradient id="disc" cx="50%" cy="50%" r="55%">
+      <stop offset="0" stop-color="#FFF1C9"/>
+      <stop offset="1" stop-color="#F0C46E"/>
+    </radialGradient>
+    <clipPath id="eye"><circle cx="210" cy="210" r="190"/></clipPath>
+  </defs>
+  <circle cx="210" cy="210" r="198" fill="#14302F"/>
+  <circle cx="210" cy="210" r="190" fill="url(#fundus)"/>
+  <g clip-path="url(#eye)" fill="none" stroke="#7A1F12" stroke-linecap="round" opacity="0.85">
+    <path d="M258 200 C 222 150, 170 124, 100 104" stroke-width="6"/>
+    <path d="M196 140 C 170 150, 150 150, 118 172" stroke-width="3"/>
+    <path d="M258 200 C 232 232, 182 268, 110 302" stroke-width="6"/>
+    <path d="M190 262 C 176 282, 170 300, 150 330" stroke-width="3"/>
+    <path d="M258 200 C 300 140, 326 112, 352 66" stroke-width="5"/>
+    <path d="M258 200 C 298 258, 326 286, 362 312" stroke-width="5"/>
+    <path d="M320 262 C 326 286, 330 306, 350 336" stroke-width="3"/>
+  </g>
+  <ellipse cx="258" cy="200" rx="46" ry="50" fill="url(#disc)"/>
+  <ellipse cx="262" cy="200" rx="22" ry="25" fill="#FFF8E3"/>
+
+  <!-- what the website draws on top of the photo -->
+  <ellipse cx="258" cy="200" rx="49" ry="53" fill="none" stroke="#4FD1C5" stroke-width="3"/>
+  <ellipse cx="262" cy="200" rx="24" ry="27" fill="none" stroke="#FFFFFF" stroke-width="3"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif" font-size="13" font-weight="600" fill="#FFFFFF">
+    <rect x="226" y="132" width="86" height="24" rx="4" fill="#101818"/>
+    <text x="236" y="149">Optic disc</text>
+    <rect x="112" y="226" width="92" height="64" rx="2" fill="none" stroke="#FF5A4E" stroke-width="3" stroke-dasharray="9 6"/>
+    <rect x="112" y="200" width="104" height="24" rx="4" fill="#101818"/>
+    <text x="121" y="217">A1 | high error</text>
+    <rect x="296" y="236" width="70" height="52" rx="2" fill="none" stroke="#FFB020" stroke-width="3" stroke-dasharray="9 6"/>
+    <rect x="296" y="210" width="62" height="24" rx="4" fill="#101818"/>
+    <text x="305" y="227">A2</text>
+  </g>
+</svg>

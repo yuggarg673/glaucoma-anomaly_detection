@@ -16,13 +16,20 @@ jobs:
         run: |
           pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
           pip install numpy pandas scikit-learn opencv-python-headless pillow pyyaml matplotlib flask
-      - name: Unit and API tests (includes the PyTorch tests)
+      - name: Install a browser for the website tests
+        run: |
+          pip install playwright
+          python -m playwright install --with-deps chromium
+      - name: Unit, API and website tests (includes the PyTorch tests and the real-browser tests)
         run: python -m unittest discover -s tests -v
       - name: Smoke test of the whole pipeline on synthetic data
         run: python scripts/run_pipeline.py --quick
 
+  # The optional React version in frontend/. The website people use is web/ (no build step), tested above.
+  # This job has never run, so a failure here does not fail the build.
   frontend:
     runs-on: ubuntu-latest
+    continue-on-error: true
     defaults:
       run:
         working-directory: frontend

@@ -580,11 +580,316 @@ class APITests(unittest.TestCase):
         self.assertIn("not give a medical diagnosis", r["disclaimer"])
         self.assertIn("NOT the probability", r["glossary"]["confidence"]["caution"])
 
+    def test_analysis_crash_is_json_and_does_not_leak_internals(self):
+        class Crashing:
+            def analyze(self, rgb):
+                raise RuntimeError("secret path /home/someone/checkpoints/x.pt")
+        client = __import__("backend.app", fromlist=["create_app"]).create_app(analyzer=Crashing(), db_path=self.db).test_client()
+        r = self.post(client, png_bytes())
+        self.assertEqual(r.status_code, 500)
+        body = r.get_json()
+        self.assertEqual(body["error"]["code"], "analysis_failed")
+        self.assertNotIn("secret", body["error"]["message"])
+        self.assertTrue(body["request_id"])
+
+    def test_unexpected_error_outside_the_analysis_is_json_too(self):
+        """For example the history database being locked or the disk full: no HTML error page, no internals."""
+        import sqlite3
+        from unittest import mock
+        with mock.patch("backend.db.add_prediction", side_effect=sqlite3.OperationalError("database is locked: /srv/x.db")):
+            r = self.post(self.app, png_bytes())
+        self.assertEqual(r.status_code, 500)
+        self.assertIn("application/json", r.headers["Content-Type"])
+        body = r.get_json()
+        self.assertEqual(body["error"]["code"], "server_error")
+        self.assertNotIn("locked", body["error"]["message"])
+        self.assertTrue(body["request_id"])
+
     def test_cors_only_for_configured_origin(self):
         ok = self.app.get("/health", headers={"Origin": "http://localhost:5173"})
         bad = self.app.get("/health", headers={"Origin": "http://evil.example"})
         self.assertEqual(ok.headers.get("Access-Control-Allow-Origin"), "http://localhost:5173")
         self.assertIsNone(bad.headers.get("Access-Control-Allow-Origin"))
+
+
+class WebsiteTests(unittest.TestCase):
+    """The website files and the way the backend serves them. No browser needed (tests/test_ui_browser.py has that)."""
+
+    WEB = ROOT / "web"
+
+    def setUp(self):
+        from backend.app import create_app
+        self.tmp = tempfile.TemporaryDirectory()
+        self.db = Path(self.tmp.name) / "t.sqlite3"
+        self.app = create_app(analyzer=StubAnalyzer(), db_path=self.db).test_client()
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def get(self, path, **kw):
+        r = self.app.get(path, **kw)
+        r.close()   # send_from_directory streams the file; close it so no handle stays open
+        return r
+
+    def test_home_page_is_html_with_a_strict_content_security_policy(self):
+        r = self.get("/")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn("text/html", r.headers["Content-Type"])
+        csp = r.headers["Content-Security-Policy"]
+        self.assertIn("script-src 'self'", csp)
+        self.assertNotIn("unsafe-inline", csp)
+        self.assertNotIn("unsafe-eval", csp)
+        self.assertNotIn("frame-ancestors", csp)   # on purpose: lets the page show inside a Colab output frame
+
+    def test_every_file_the_page_loads_exists_and_is_served(self):
+        import re
+        html = (self.WEB / "index.html").read_text(encoding="utf-8")
+        local = [u for u in re.findall(r'(?:src|href)="([^"#]+)"', html) if not u.startswith(("http", "//", "mailto:"))]
+        self.assertGreaterEqual(len(local), 3)
+        for url in local:
+            self.assertTrue((self.WEB / url).is_file(), f"index.html refers to {url}, which does not exist")
+            self.assertEqual(self.get("/" + url).status_code, 200, url)
+
+    def test_page_has_no_inline_script_style_or_handlers(self):
+        """The CSP blocks these, so one slipping in would silently break the page in a real browser."""
+        import re
+        html = (self.WEB / "index.html").read_text(encoding="utf-8")
+        self.assertIsNone(re.search(r"<script(?![^>]*\bsrc=)", html), "inline <script>")
+        self.assertIsNone(re.search(r"<style", html), "inline <style>")
+        self.assertIsNone(re.search(r"\sstyle=", html), "inline style attribute")
+        self.assertIsNone(re.search(r"\son[a-z]+=", html), "inline event handler")
+
+    def test_script_never_writes_markup_from_data(self):
+        """File names and server messages are shown with textContent only, so they cannot inject HTML."""
+        import re
+        js = (self.WEB / "assets" / "app.js").read_text(encoding="utf-8")
+        js = re.sub(r"/\*.*?\*/", "", js, flags=re.S)                   # comments may mention the banned words
+        js = re.sub(r"(?m)^\s*//.*$|\s//\s.*$", "", js)
+        for banned in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval(", "new Function"):
+            self.assertNotIn(banned, js)
+
+    def test_script_uses_relative_urls_only(self):
+        """A leading slash would break the site behind a proxy path such as Colab's."""
+        import re
+        js = (self.WEB / "assets" / "app.js").read_text(encoding="utf-8")
+        self.assertIsNone(re.search(r'api\(\s*[`"\']/', js))
+        self.assertIsNone(re.search(r'fetch\(\s*[`"\']/', js))
+
+    def test_assets_have_sensible_content_types(self):
+        for name, kind in (("app.js", "javascript"), ("styles.css", "css"), ("hero.svg", "svg"), ("favicon.svg", "svg")):
+            r = self.get(f"/assets/{name}")
+            self.assertEqual(r.status_code, 200, name)
+            self.assertIn(kind, r.headers["Content-Type"], name)
+
+    def test_path_traversal_is_refused(self):
+        for bad in ("/assets/../backend/app.py", "/assets/..%2fbackend%2fapp.py", "/assets/%2e%2e/configs/config.yaml",
+                    "/assets//etc/passwd", "/assets/..\\..\\backend\\app.py"):
+            r = self.get(bad, follow_redirects=True)   # a redirect to a cleaned-up address is fine, it must still end in 404
+            self.assertIn(r.status_code, (400, 404), bad)
+            self.assertNotIn(b"create_app", r.data, bad)
+            self.assertNotIn(b"max_upload_mb", r.data, bad)
+
+    def test_unknown_address_and_wrong_method_answer_in_json(self):
+        r = self.get("/nope")
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.get_json()["error"]["code"], "not_found")
+        r = self.app.post("/health")
+        self.assertEqual(r.status_code, 405)
+        self.assertEqual(r.get_json()["error"]["code"], "method_not_allowed")
+        self.assertTrue(r.get_json()["request_id"])
+
+    def test_security_and_cache_headers(self):
+        api = self.get("/health")
+        self.assertEqual(api.headers["X-Content-Type-Options"], "nosniff")
+        self.assertEqual(api.headers["Referrer-Policy"], "no-referrer")
+        self.assertEqual(api.headers["Cache-Control"], "no-store")        # results are never cached
+        page = self.get("/")
+        self.assertEqual(page.headers["X-Content-Type-Options"], "nosniff")
+        self.assertNotEqual(page.headers.get("Cache-Control"), "no-store")  # the page itself may be revalidated
+
+    def test_health_reports_the_upload_limit_and_whether_models_are_test_models(self):
+        body = self.get("/health").get_json()
+        self.assertEqual(body["max_upload_mb"], 10)
+        self.assertIs(body["test_models"], False)
+
+    def test_missing_website_folder_gives_a_clear_error_and_the_api_still_works(self):
+        from backend.app import create_app
+        empty = Path(self.tmp.name) / "empty"
+        empty.mkdir()
+        client = create_app(analyzer=StubAnalyzer(), db_path=self.db, web_dir=empty).test_client()
+        r = client.get("/")
+        self.assertEqual(r.status_code, 404)
+        self.assertEqual(r.get_json()["error"]["code"], "website_missing")
+        self.assertEqual(client.get("/health").status_code, 200)
+
+    def test_backend_can_be_started_from_a_clean_shell(self):
+        """`python -m backend.app` must not need PYTHONPATH or an install (it did once: ModuleNotFoundError)."""
+        import os
+        import subprocess
+        env = {k: v for k, v in os.environ.items() if k != "PYTHONPATH"}
+        done = subprocess.run([sys.executable, "-c", "import backend.app; print('ok')"], cwd=ROOT, env=env,
+                              capture_output=True, text=True, timeout=120)
+        self.assertEqual(done.returncode, 0, done.stderr[-800:])
+        self.assertIn("ok", done.stdout)
+
+
+class UploadSafetyTests(unittest.TestCase):
+    @staticmethod
+    def empty_png(width, height):
+        """A valid, all-black PNG. Compressed zeros are tiny on disk but need width*height*3 bytes of memory to decode:
+        the shape of a 'decompression bomb'."""
+        import struct
+        import zlib
+
+        def chunk(kind, payload):
+            return struct.pack(">I", len(payload)) + kind + payload + struct.pack(">I", zlib.crc32(kind + payload))
+
+        packer = zlib.compressobj(9)
+        row = b"\x00" * (1 + 3 * width)                       # filter byte + black pixels
+        parts = [packer.compress(row * 200) for _ in range(height // 200)]
+        parts.append(packer.compress(row * (height % 200)))
+        parts.append(packer.flush())
+        return (b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", struct.pack(">IIBBBBB", width, height, 8, 2, 0, 0, 0))
+                + chunk(b"IDAT", b"".join(parts)) + chunk(b"IEND", b""))
+
+    def test_a_small_file_that_expands_to_a_huge_picture_is_refused_before_decoding(self):
+        from glaucoma.preprocessing import ImageDecodeError, decode_image_bytes
+        data = self.empty_png(9000, 9000)                      # 81 million pixels, about 243 MB if decoded
+        self.assertLess(len(data), 2_000_000)
+        with self.assertRaises(ImageDecodeError) as ctx:
+            decode_image_bytes(data)
+        self.assertIn("9000x9000", str(ctx.exception))
+
+    def test_the_limit_can_be_set_and_the_api_answers_422(self):
+        from backend.app import create_app
+        with tempfile.TemporaryDirectory() as tmp:
+            flask_app = create_app(analyzer=StubAnalyzer(), db_path=Path(tmp) / "t.sqlite3")
+            flask_app.config["MAX_IMAGE_PIXELS"] = 1000
+            r = flask_app.test_client().post("/predict", data={"image": (io.BytesIO(png_bytes(128, 128)), "big.png")},
+                                             content_type="multipart/form-data")
+        self.assertEqual(r.status_code, 422)
+        self.assertEqual(r.get_json()["error"]["code"], "unreadable_image")
+        self.assertIn("128x128", r.get_json()["error"]["message"])
+
+    def test_a_normal_image_still_decodes(self):
+        from glaucoma.preprocessing import decode_image_bytes
+        self.assertEqual(decode_image_bytes(png_bytes(200, 100)).shape, (100, 200, 3))
+
+
+class LoadFailureAdviceTests(unittest.TestCase):
+    """When the models cannot load, the website tells the person the right next step (not always 'train them')."""
+
+    def test_missing_package_says_to_install_requirements(self):
+        from backend.app import load_failure_advice
+        what, fix = load_failure_advice(ModuleNotFoundError("No module named 'torch'", name="torch"))
+        self.assertIn("torch", what)
+        self.assertIn("pip install -r requirements.txt", fix)
+
+    def test_missing_checkpoints_says_to_train(self):
+        from backend.app import TRAIN_FIX, load_failure_advice
+        from glaucoma.inference import ModelsNotReady
+        what, fix = load_failure_advice(ModelsNotReady("Missing checkpoints: autoencoder (autoencoder.pt)."))
+        self.assertTrue(what.startswith("Missing checkpoints"))
+        self.assertEqual(fix, TRAIN_FIX)
+        self.assertIn("run_pipeline.py", fix)
+
+    def test_anything_else_points_to_the_log(self):
+        from backend.app import load_failure_advice
+        what, fix = load_failure_advice(RuntimeError("size mismatch"))
+        self.assertIn("RuntimeError: size mismatch", what)
+        self.assertIn("server log", fix)
+
+    def test_health_carries_detail_and_fix_when_loading_fails(self):
+        from unittest import mock
+
+        from backend.app import create_app
+        from glaucoma.inference import ModelsNotReady
+        with tempfile.TemporaryDirectory() as tmp, \
+                mock.patch("glaucoma.inference.Analyzer", side_effect=ModelsNotReady("Missing checkpoints: segmenter (segmenter.pt).")):
+            client = create_app(db_path=Path(tmp) / "t.sqlite3").test_client()
+            body = client.get("/health").get_json()
+        self.assertEqual(body["status"], "degraded")
+        self.assertFalse(body["models_loaded"])
+        self.assertIn("segmenter", body["detail"])
+        self.assertIn("run_pipeline.py", body["fix"])
+
+
+class ResponseContractTests(unittest.TestCase):
+    """Runs the REAL post-processing (CDR, fusion, annotation, response) on invented model outputs from tests/standin.py,
+    and checks every field the website reads. It cannot tell whether the neural networks are any good."""
+
+    FIELDS = ("label", "anomaly_score", "anomaly_threshold", "cdr", "cdr_reason", "cdr_reference", "fused_score", "threshold",
+              "confidence_score", "confidence_level", "signals_agree", "used_cdr", "regions", "annotated_image",
+              "image_size", "annotated_size", "model_versions", "trained_on", "test_models")
+
+    @classmethod
+    def setUpClass(cls):
+        from tests.standin import StandInAnalyzer
+        cls.analyzer = StandInAnalyzer()
+
+    @staticmethod
+    def photo(w=640, h=480, level=140):
+        img = np.full((h, w, 3), level, np.uint8)
+        cv2.circle(img, (w // 2, h // 2), min(w, h) // 3, (min(255, level + 40),) * 3, -1)
+        return img
+
+    def test_every_field_the_website_reads_is_present(self):
+        res = self.analyzer.analyze(self.photo())
+        for key in self.FIELDS:
+            self.assertIn(key, res)
+        self.assertIn(res["label"], ("normal", "glaucoma_suspected"))
+        self.assertIn(res["confidence_level"], ("High", "Medium", "Low"))
+        self.assertTrue(res["annotated_image"].startswith("data:image/png;base64,"))
+        self.assertIs(res["test_models"], True)
+
+    def test_the_annotated_image_decodes_and_matches_the_reported_size(self):
+        import base64
+        res = self.analyzer.analyze(self.photo(640, 480))
+        raw = base64.b64decode(res["annotated_image"].split(",", 1)[1])
+        out = cv2.imdecode(np.frombuffer(raw, np.uint8), cv2.IMREAD_COLOR)
+        self.assertEqual((out.shape[1], out.shape[0]), (res["annotated_size"]["width"], res["annotated_size"]["height"]))
+        self.assertEqual(res["image_size"], {"width": 640, "height": 480})
+
+    def test_region_boxes_lie_inside_the_annotated_image(self):
+        res = self.analyzer.analyze(self.photo(800, 600, level=200))
+        size = res["annotated_size"]
+        self.assertGreaterEqual(len(res["regions"]), 1)
+        for reg in res["regions"]:
+            x, y, w, h = reg["box"]
+            self.assertTrue(0 <= x and 0 <= y and x + w <= size["width"] and y + h <= size["height"], reg)
+            self.assertIn(reg["severity"], ("moderate", "high"))
+
+    def test_region_boxes_sit_where_the_error_is_whatever_the_image_size(self):
+        """The stand-in puts its two error blobs at fixed relative places (28% across and 62% down, 72% across and 34% down).
+        The boxes must land there in the annotated picture, also after a huge upload has been shrunk for the response."""
+        for w, h in ((640, 480), (1000, 1000), (3000, 2000)):
+            res = self.analyzer.analyze(self.photo(w, h, level=170))
+            size = res["annotated_size"]
+            centres = [((x + bw / 2) / size["width"], (y + bh / 2) / size["height"])
+                       for x, y, bw, bh in (r["box"] for r in res["regions"])]
+            for want in ((0.28, 0.62), (0.72, 0.34)):
+                nearest = min(((cx - want[0]) ** 2 + (cy - want[1]) ** 2) ** 0.5 for cx, cy in centres)
+                self.assertLess(nearest, 0.12, f"{w}x{h}: no box near {want}; centres were {centres}")
+
+    def test_a_huge_upload_gives_a_capped_annotated_image_with_the_same_shape(self):
+        cap = int(self.analyzer.cfg["annotate"]["max_output_side"])
+        res = self.analyzer.analyze(self.photo(3000, 2000))
+        self.assertEqual(res["image_size"], {"width": 3000, "height": 2000})
+        a = res["annotated_size"]
+        self.assertLessEqual(max(a["width"], a["height"]), cap)
+        self.assertAlmostEqual(a["width"] / a["height"], 3000 / 2000, delta=0.01)
+
+    def test_a_small_image_is_not_enlarged(self):
+        res = self.analyzer.analyze(self.photo(300, 200))
+        self.assertEqual(res["annotated_size"], {"width": 300, "height": 200})
+
+    def test_cdr_unavailable_is_reported_with_a_reason_and_scoring_still_works(self):
+        res = self.analyzer.analyze(np.full((300, 300, 3), 8, np.uint8))   # so dark that the stand-in finds no cup
+        self.assertIsNone(res["cdr"])
+        self.assertTrue(res["cdr_reason"])
+        self.assertIs(res["used_cdr"], False)
+        self.assertIsNone(res["signals_agree"])
+        self.assertIsNotNone(res["fused_score"])
 
 
 try:

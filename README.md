@@ -1,6 +1,6 @@
 # Glaucoma anomaly screening
 
-A web app that takes a retinal fundus image and returns:
+A website that takes a retinal fundus image and returns:
 
 - a **label** (glaucoma suspected / normal-like),
 - an **anomaly score** from a convolutional autoencoder trained only on healthy images,
@@ -21,17 +21,33 @@ ICIP 2018), changed to use reconstruction error as the diagnostic signal and to 
 | Config, data splits, CDR, fusion, metrics, annotated image, API, history | Written **and tested** (every test that needs no PyTorch passes) |
 | G1020 outlines to training masks (`prepare_segmentation_data.py`), segmenter augmentation, CDR sanity check | Written **and tested on fake G1020-style data**. The real G1020 download could not be reached, so its exact file layout is unverified (the converter reports every file it cannot use) |
 | PyTorch models and training scripts (autoencoder, baseline, segmenter, fusion fitting) | Written, **not yet run**: the environment it was built in could not install PyTorch. The PyTorch tests exist and were skipped there. |
-| React website | Written, **not yet built or opened in a browser** (no npm access there) |
+| Website (`web/`, plain HTML/CSS/JS served by the backend, no Node needed) | Written and **checked in a real browser** (headless Chromium: upload, result, errors, history, phone width, no console or security-policy errors). The browser tests use invented model outputs (`tests/standin.py`) because PyTorch was not available, so they prove the page works, not that the models are good |
+| React website (`frontend/`, optional older version) | Written, **never built or opened** (no npm access there). You do not need it: `web/` replaces it |
 | Real datasets | Not included. You download them ([docs/DATA.md](docs/DATA.md)) |
 | Results (AUC etc.) | **None yet.** They appear in `results/` after you train on real data |
 
-So the first thing to do on your machine is `python -m unittest discover -s tests -v` (the 6 PyTorch tests will now
+So the first thing to do on your machine is `python -m unittest discover -s tests -v` (the PyTorch tests will now
 run) and `python scripts/run_pipeline.py --quick`. If something breaks, `docs/TROUBLESHOOTING.md` and
 `python scripts/doctor.py` are there to help.
 
+## Run the website
+
+```bash
+pip install -r requirements.txt
+python -m backend.app --open              # website and API on http://localhost:5000
+```
+
+That is the whole setup: no Node, no build step. The site needs trained models to analyse images:
+
+- **Without them** it still opens, and says plainly that the models are not loaded. It never invents a result.
+- **After `--quick`** (a code check on synthetic drawings) it shows a red **TEST models** warning on every page and every
+  result, because those numbers mean nothing.
+- **With real models** (see "Real run" below, or the Colab notebook) it shows the label, anomaly score, cup-to-disc
+  ratio, confidence and an annotated image.
+
 ## Quick start
 
-Needs Python 3.10+ and Node 18+.
+Needs Python 3.10+. Node is only needed for the optional React version in `frontend/`.
 
 ```bash
 git clone <your-repo-url> && cd glaucoma-anomaly
@@ -57,15 +73,19 @@ ACRIMA + G1020 and gives you a `trained_models.zip` to extract into this project
 
 Everything writes to `results/` (metrics, `tables/main_results.md`, figures) and `checkpoints/` (git-ignored).
 
-Run the app (two terminals):
+Run the app:
 
 ```bash
-python -m backend.app                     # API on http://localhost:5000
-cd frontend && cp .env.example .env && npm install && npm run dev    # site on http://localhost:5173
+python -m backend.app --open              # website and API on http://localhost:5000
+python -m backend.app --port 5001         # if port 5000 is taken
+python scripts/doctor.py                  # checks files, checkpoints and that the running server answers
 ```
 
-On Linux/macOS, `make setup`, `make quick`, `make train`, `make test`, `make doctor`, `make serve-backend`,
-`make serve-frontend` are shortcuts.
+On Linux/macOS, `make setup`, `make quick`, `make train`, `make test`, `make doctor`, `make website` are shortcuts.
+Test the website in a real browser (skipped if Playwright is missing):
+`pip install playwright && python -m playwright install chromium && python -m unittest tests.test_ui_browser -v`.
+
+The older React version (`frontend/`, `make serve-frontend`) is optional and has never been built; `web/` does the same job.
 
 ## How it works
 
@@ -91,8 +111,9 @@ only; the test split is used once for reporting. See [docs/DECISIONS.md](docs/DE
 ```
 configs/config.yaml        all hyperparameters and paths
 src/glaucoma/              library: data, models, training, eval, cdr, inference
-backend/                   Flask API (app.py), SQLite history (db.py), user explanations (glossary.py)
-frontend/                  React + Vite + Tailwind website
+backend/                   Flask app: serves the website and the API (app.py), SQLite history (db.py), explanations (glossary.py)
+web/                       the website: index.html + assets/ (plain HTML, CSS and JavaScript; no build step)
+frontend/                  optional React + Vite + Tailwind version (never built; not needed)
 scripts/                   run_pipeline, download/inspect data, doctor, make_splits
 tests/                     unit and API tests
 docs/                      USER_GUIDE, DATA, TROUBLESHOOTING, DECISIONS
@@ -102,7 +123,8 @@ docs/                      USER_GUIDE, DATA, TROUBLESHOOTING, DECISIONS
 
 | Endpoint | Purpose |
 | --- | --- |
-| `GET /health` | status and whether models are loaded |
+| `GET /` and `GET /assets/*` | the website |
+| `GET /health` | status, whether models are loaded, whether they are test models, upload limit |
 | `GET /explain` | plain-language explanations used by the website |
 | `POST /predict` | multipart field `image` (JPG/PNG). Returns the result and a base64 annotated PNG |
 | `GET /history` | recent results (scores only) |

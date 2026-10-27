@@ -1,0 +1,4 @@
+# Extras for development. Not needed to run the website or the models.
+-r requirements.txt
+# Real-browser tests of the website (tests/test_ui_browser.py). After installing: python -m playwright install chromium
+playwright>=1.40
