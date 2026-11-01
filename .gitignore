@@ -32,3 +32,6 @@ frontend/.env
 .DS_Store
 Thumbs.db
 .env
+
+# Streamlit secrets (this project uses none; keep it that way)
+.streamlit/secrets.toml

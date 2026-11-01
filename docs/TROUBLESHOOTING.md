@@ -42,3 +42,7 @@ Logs of every training script are in `logs/`.
 
 `python scripts/run_pipeline.py --quick` uses **synthetic drawings** (not eye photos) at tiny size for two epochs.
 It only proves the code runs end to end. Never report its numbers.
+| `streamlit: command not found` | Streamlit is not installed in this Python | `pip install -r requirements.txt`, then `streamlit run streamlit_app.py` (or `python -m streamlit run streamlit_app.py`) |
+| Streamlit page says "The trained models are not loaded" | `checkpoints/` is missing, or (on Streamlit Cloud) the files were never committed | Train (Colab notebook), then `git add -f` the six files and push. See `docs/DEPLOY.md`, part 3 |
+| Streamlit Cloud build runs out of space or downloads `nvidia-...` packages | The CUDA build of PyTorch was chosen | `--extra-index-url https://download.pytorch.org/whl/cpu` must be the line above `torch` in `requirements.txt`; fallback pins are in `docs/DEPLOY.md` |
+| `git push` says `refusing to allow a Personal Access Token to create or update workflow` | The token has no `workflow` permission and the repo contains `.github/workflows` | Tick `workflow` on the token, or sign in through the browser window |

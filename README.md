@@ -51,6 +51,18 @@ That is the whole setup: no Node, no build step. The site needs trained models t
 - **With real models** (see "Real run" below, or the Colab notebook) it shows the label, anomaly score, cup-to-disc
   ratio, confidence and an annotated image.
 
+### Or as a Streamlit page
+
+```bash
+pip install -r requirements.txt
+streamlit run streamlit_app.py            # http://localhost:8501
+```
+
+Same checks, same analysis and same wording as the website (they share `backend/service.py` and `backend/present.py`),
+no history. It is what you deploy on Streamlit Community Cloud: **[docs/DEPLOY.md](docs/DEPLOY.md)** walks through
+GitHub, training and deployment. The page has only been run against a stand-in for Streamlit (it could not be installed
+where it was written), so the first real run is the real test.
+
 ## Quick start
 
 Needs Python 3.10+. Node is only needed for the optional React version in `frontend/`.
@@ -119,11 +131,13 @@ configs/config.yaml        all hyperparameters and paths
 src/glaucoma/              library: data, models, training, eval, cdr, inference
 start_website.bat / .sh    one-click launchers (create .venv, install requirements once, start the website)
 backend/                   Flask app: serves the website and the API (app.py), SQLite history (db.py), explanations (glossary.py)
+                           shared by the website and Streamlit: service.py (check upload, run models), present.py (words), advice.py
+streamlit_app.py          the Streamlit page; .streamlit/config.toml holds its settings
 web/                       the website: index.html + assets/ (plain HTML, CSS and JavaScript; no build step)
 frontend/                  optional React + Vite + Tailwind version (never built; not needed)
 scripts/                   run_pipeline, download/inspect data, doctor, make_splits
 tests/                     unit and API tests
-docs/                      USER_GUIDE, DATA, TROUBLESHOOTING, DECISIONS
+docs/                      USER_GUIDE, DATA, DEPLOY (GitHub + training + Streamlit), TROUBLESHOOTING, DECISIONS
 ```
 
 ## API
@@ -140,18 +154,22 @@ Errors are JSON `{"error": {"code", "message"}}` with 400 / 413 / 415 / 422 / 50
 
 ## Putting it on GitHub
 
+Upload the *contents* of the zip (not the zip file). From the extracted folder:
+
 ```bash
-git init            # already done if you got a zip with .git
-git add .
-git commit -m "Initial commit"
-git branch -M main
 git remote add origin https://github.com/<you>/glaucoma-anomaly.git
+git branch -M main
 git push -u origin main
 ```
 
-Datasets, trained weights, logs and results are git-ignored on purpose. To share trained weights, use GitHub Releases
-or Git LFS rather than committing them. **Add a licence file** that matches your institution's rules before making the
-repository public.
+The zip carries its git history (author "Project Author") and no git identity, so your own commits use your
+`git config user.name` and `user.email`. Prefer a fresh history under your name? Delete `.git`, then `git init -b main`,
+`git add .`, `git commit`. Details, limits and error messages: [docs/DEPLOY.md](docs/DEPLOY.md).
+
+Datasets, trained weights, logs and results are git-ignored on purpose. To deploy on Streamlit the six small files in
+`checkpoints/` must be in the repository: add them with `git add -f` (listed in [docs/DEPLOY.md](docs/DEPLOY.md), part 3).
+Bigger weights belong in GitHub Releases or Git LFS. **Add a licence file** that matches your institution's rules before
+making the repository public.
 
 ## Limitations
 

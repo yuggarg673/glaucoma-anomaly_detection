@@ -1,5 +1,10 @@
 # Lower bounds only. The PyTorch-free parts were tested with numpy 2.5, scikit-learn 1.9, opencv 5.0, flask 3.1, Python 3.13.
-# CPU-only PyTorch install (smaller): pip install torch torchvision --index-url https://download.pytorch.org/whl/cpu
+# Streamlit has never been installed here (no network in the build sandbox): the page was only run against a stand-in.
+#
+# PyTorch from its official CPU-only index. On Linux the default download is the CUDA build (several GB), which does not
+# fit on Streamlit Community Cloud; the CPU build is a few hundred MB. On Windows and Mac this line changes nothing important.
+# If the Streamlit build still downloads packages called nvidia-..., see docs/DEPLOY.md (part 3, "If something goes wrong").
+--extra-index-url https://download.pytorch.org/whl/cpu
 torch>=2.2
 torchvision>=0.17
 numpy>=1.26
@@ -10,3 +15,4 @@ pillow>=10.0
 pyyaml>=6.0
 matplotlib>=3.8
 flask>=3.0
+streamlit>=1.36

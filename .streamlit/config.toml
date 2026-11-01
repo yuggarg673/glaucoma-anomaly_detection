@@ -1,0 +1,13 @@
+# Read by `streamlit run streamlit_app.py` and by Streamlit Community Cloud (it must sit in the repository root).
+[server]
+maxUploadSize = 10          # MB. The same limit as api.max_upload_mb in configs/config.yaml
+
+[browser]
+gatherUsageStats = false
+
+[theme]                     # the colours of the Flask website (web/assets/styles.css)
+base = "light"
+primaryColor = "#1B6F6A"
+backgroundColor = "#F4F6F3"
+secondaryBackgroundColor = "#E9EFEB"
+textColor = "#14302F"

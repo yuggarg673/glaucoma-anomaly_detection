@@ -19,13 +19,14 @@ from pathlib import Path
 from flask import Flask, g, jsonify, request, send_from_directory
 
 from glaucoma.config import REPO_ROOT, load_config, resolve
-from glaucoma.preprocessing import MAX_UPLOAD_PIXELS, ImageDecodeError, decode_image_bytes
+from glaucoma.preprocessing import MAX_UPLOAD_PIXELS
 
 from . import db
+from .advice import TRAIN_FIX, load_failure_advice  # noqa: F401  (re-exported: tests and callers import them from here)
 from .glossary import DISCLAIMER, GLOSSARY, HOW_TO_USE, LIMITS
+from .service import ALLOWED_EXT, UploadProblem, analyze_upload, load_analyzer  # noqa: F401  (ALLOWED_EXT: callers import it from here)
 
 log = logging.getLogger("api")
-ALLOWED_EXT = {".jpg", ".jpeg", ".png"}
 WEB_DIR = REPO_ROOT / "web"
 
 # The site loads its own script and stylesheet, Google Fonts (optional, it falls back to system fonts) and talks only to
@@ -33,22 +34,6 @@ WEB_DIR = REPO_ROOT / "web"
 CSP = ("default-src 'self'; img-src 'self' data: blob:; style-src 'self' https://fonts.googleapis.com; "
        "font-src https://fonts.gstatic.com; script-src 'self'; connect-src 'self'; object-src 'none'; "
        "base-uri 'self'; form-action 'self'")
-
-
-TRAIN_FIX = ("Train them with `python scripts/run_pipeline.py` (or the Colab notebook), copy `checkpoints/` next to "
-             "`backend/`, then restart the server.")
-
-
-def load_failure_advice(exc: Exception) -> tuple[str, str]:
-    """(what went wrong, what to do next) when the models cannot be loaded. Shown on the website and in the console."""
-    detail = f"{type(exc).__name__}: {exc}"
-    if isinstance(exc, ModuleNotFoundError):
-        return (f"A required Python package is missing ({exc.name}).",
-                "Install the requirements with `pip install -r requirements.txt`, then restart the server.")
-    if type(exc).__name__ == "ModelsNotReady":
-        return str(exc), TRAIN_FIX
-    return (detail, "Look for the line starting 'Models NOT loaded' in the server log. If the checkpoints are damaged "
-                    "or from an older version, train again with `python scripts/run_pipeline.py`.")
 
 
 def create_app(config_path: str | None = None, analyzer=None, db_path: Path | None = None,
@@ -68,12 +53,10 @@ def create_app(config_path: str | None = None, analyzer=None, db_path: Path | No
     if analyzer is None and not load_models:
         state["error"] = "Model loading was disabled."
     elif analyzer is None:
-        try:
-            from glaucoma.inference import Analyzer
-            state["analyzer"] = Analyzer(cfg)
+        state["analyzer"], state["error"], state["fix"] = load_analyzer(cfg)   # never raises: the API stays up
+        if state["analyzer"] is not None:
             log.info("Models loaded.")
-        except Exception as exc:  # noqa: BLE001  keep the API up and report the reason in /health
-            state["error"], state["fix"] = load_failure_advice(exc)
+        else:
             log.warning("Models NOT loaded: %s", state["error"])
     app.config["MODELS_LOADED"] = state["analyzer"] is not None
     app.config["MODELS_ERROR"] = state["error"]
@@ -157,22 +140,11 @@ def create_app(config_path: str | None = None, analyzer=None, db_path: Path | No
         f = request.files.get("image")
         if f is None or not f.filename:
             return err("no_file", "Send the image as multipart form field 'image'.", 400)
-        if Path(f.filename).suffix.lower() not in ALLOWED_EXT:
-            return err("wrong_type", "Only JPG or PNG images are accepted.", 415)
         try:
-            rgb = decode_image_bytes(f.read(), app.config["MAX_IMAGE_PIXELS"])
-        except ImageDecodeError as exc:
-            return err("unreadable_image", str(exc), 422)
-        h, w = rgb.shape[:2]
-        if min(h, w) < cfg["api"]["min_image_side"]:
-            return err("image_too_small", f"The image is {w}x{h}. Each side must be at least {cfg['api']['min_image_side']} pixels.", 422)
-        try:
-            with analysis_lock:
-                result = state["analyzer"].analyze(rgb)
-        except Exception as exc:  # noqa: BLE001
-            log.exception("analysis failed rid=%s", g.rid)
-            return err("analysis_failed", f"The analysis failed ({type(exc).__name__}). The details are in the server log.", 500)
-        result["disclaimer"] = DISCLAIMER
+            result = analyze_upload(state["analyzer"], f.filename, f.read(), cfg, lock=analysis_lock,
+                                    max_pixels=app.config["MAX_IMAGE_PIXELS"], context=f"rid={g.rid}")
+        except UploadProblem as exc:
+            return err(exc.code, exc.message, exc.status)
         result["id"] = db.add_prediction(db_file, f.filename, result)
         return jsonify(result)
 

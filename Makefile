@@ -2,10 +2,10 @@
 PY ?= python3
 export PYTHONPATH := src:.
 
-.PHONY: help setup setup-frontend quick train data splits test test-ui doctor website serve-backend serve-frontend frontend-build
+.PHONY: help setup setup-frontend quick train data splits test test-ui doctor website streamlit serve-backend serve-frontend frontend-build
 
 help:
-	@echo "make setup | quick | train | test | test-ui | doctor | website"
+	@echo "make setup | quick | train | test | test-ui | doctor | website | streamlit"
 	@echo "optional React version (never built, not needed): setup-frontend | serve-frontend | frontend-build"
 
 setup:
@@ -17,6 +17,9 @@ setup-frontend:   # only for the optional React version in frontend/ (needs Node
 
 website:          # the website and API on http://localhost:5000 (no Node, no build; needs trained models, see README)
 	$(PY) -m backend.app --open
+
+streamlit:        # the Streamlit page on http://localhost:8501 (same models as the website; see docs/DEPLOY.md)
+	$(PY) -m streamlit run streamlit_app.py
 
 quick:            # whole pipeline on synthetic data (code check only, numbers are meaningless)
 	$(PY) scripts/run_pipeline.py --quick

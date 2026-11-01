@@ -47,3 +47,21 @@
   `tests/standin.py` supplies an error map and disc/cup masks and runs everything after the networks for real (CDR,
   fusion, confidence, annotated image, response). It lives in `tests/` only, labels itself "stand-in (test only)", and the
   app never imports it.
+- **A Streamlit page next to the Flask website, over the same code.** The user wanted to deploy through Streamlit. Instead
+  of copying the website's logic, the steps both need were moved into framework-free modules: `backend/service.py` (refuse
+  or decode the upload, run the models, never leak internals), `backend/present.py` (numbers and sentences for a screen)
+  and `backend/advice.py` (what to do when the models cannot be loaded). Flask now calls the same functions, so both
+  accept and refuse the same pictures. `streamlit_app.py` is only layout.
+- **The Streamlit page keeps no history and caches nothing about a picture.** A deployed Streamlit app is public and its disk
+  is not durable, so it writes nothing. Results live in `st.session_state` (one visitor), never in `st.cache_data`, which is
+  shared by everyone. A test fails if the page uses `cache_data`, `sqlite`, file writes or `unsafe_allow_html`.
+- **The Streamlit page was tested against a stand-in for Streamlit.** Streamlit could not be installed where it was written.
+  `tests/test_streamlit_page.py` runs the real page against a recording fake that implements only the calls the page is
+  meant to use and raises on any other, and a source check lists the calls used. Sixteen deliberate breakages of the code
+  were all caught. This proves the page's own logic, not that real Streamlit behaves as the fake assumes.
+- **CPU PyTorch from its official index in `requirements.txt`.** On Linux the default wheel is the CUDA build, which does not
+  fit on Streamlit's free servers. `--extra-index-url https://download.pytorch.org/whl/cpu` selects the small build there
+  and changes nothing important on Windows or Mac. Not used inside Colab, which already has a GPU build.
+- **No git identity inside the zip.** The repository config used to carry the placeholder author, so a person's own commits
+  would have been signed "Project Author" even with their identity set. Commits made while building pass the placeholder
+  per commit instead.

@@ -38,6 +38,12 @@ def main():
         except ImportError:
             results.append(line(FAIL, f"{mod} missing ({why})", "pip install -r requirements.txt"))
     try:
+        importlib.import_module("streamlit")
+        from importlib.metadata import version as _version
+        results.append(line(OK, f"streamlit {_version('streamlit')} (optional: only for streamlit_app.py)"))
+    except ImportError:
+        results.append(line(WARN, "streamlit missing (optional: only needed for streamlit_app.py)", "pip install -r requirements.txt"))
+    try:
         import torch
         dev = "cuda" if torch.cuda.is_available() else "cpu"
         results.append(line(OK, f"torch device: {dev}"))
@@ -62,7 +68,7 @@ def main():
     sp = resolve(cfg, "data_splits")
     results.append(line(OK if (sp / "classification.csv").exists() else WARN, "split CSVs present", "python scripts/make_splits.py"))
     ck = resolve(cfg, "checkpoints")
-    for f in ["autoencoder.pt", "segmenter.pt", "fusion.json", "pixel_thresholds.json"]:
+    for f in ["autoencoder.pt", "autoencoder.meta.json", "segmenter.pt", "segmenter.meta.json", "fusion.json", "pixel_thresholds.json"]:
         results.append(line(OK if (ck / f).exists() else WARN, f"checkpoint {f}", "python scripts/run_pipeline.py"))
     try:
         with urllib.request.urlopen(a.api + "/health", timeout=3) as r:
