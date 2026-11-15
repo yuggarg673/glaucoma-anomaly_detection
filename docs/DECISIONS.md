@@ -42,7 +42,13 @@
   extra; it was never built.
 - **Models trained on synthetic data are flagged, not hidden.** `--quick` writes real-looking checkpoints from drawings. The
   analyzer reads what each checkpoint was trained on, `/health` and every result say `test_models: true`, and the website
-  shows a red warning on every page and result. Without this, a code-check run could be mistaken for a working screener.
+  and the Streamlit page show a **Demo models** label (header pill, Analyze page, and a **Demo result** note above every
+  result). Without this, a code-check run could be mistaken for a working screener.
+- **The demo label is calm, not an error box.** It started as a red warning. It was changed to blue because a demo run is
+  not a failure and a red box makes the whole page look broken. What did not change: it is on every page and result, it
+  says in words that the output is "not real findings", and it is driven by the checkpoint metadata, so there is no
+  setting that hides it. It goes away only when the models were trained on real data. Tests check that it is present on
+  every page, above the verdict, and not styled as an error.
 - **The website was checked with invented model outputs.** PyTorch could not be installed where the site was built, so
   `tests/standin.py` supplies an error map and disc/cup masks and runs everything after the networks for real (CDR,
   fusion, confidence, annotated image, response). It lives in `tests/` only, labels itself "stand-in (test only)", and the

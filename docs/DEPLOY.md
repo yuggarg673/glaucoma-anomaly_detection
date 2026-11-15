@@ -110,8 +110,8 @@ The six files in `checkpoints/` that the app needs (all are needed):
 By my arithmetic the two `.pt` files are about 10 MB and 2 MB, far under GitHub's limits. Check the real sizes.
 `results/` holds the tables and figures for your paper; the app does not need it.
 
-Training on your own computer instead: `python scripts/download_data.py`, `python scripts/inspect_data.py`,
-`python scripts/run_pipeline.py` (a GPU is strongly advised).
+Training on your own computer instead (for example in VS Code): follow [TRAIN_LOCAL.md](TRAIN_LOCAL.md). In short:
+`python scripts/download_data.py`, `python scripts/inspect_data.py`, `python scripts/run_pipeline.py` (a GPU is strongly advised).
 
 ---
 
@@ -122,8 +122,9 @@ Training on your own computer instead: `python scripts/download_data.py`, `pytho
 pip install -r requirements.txt
 streamlit run streamlit_app.py
 ```
-A page opens at http://localhost:8501. It must **not** say "models not loaded" or show a red "These are test models"
-banner. Upload a picture and press **Analyze image**.
+A page opens at http://localhost:8501. It must **not** say "models not loaded" or show the blue "Demo models" label
+(that label means the models came from the `--quick` code check, not from real training). Upload a picture and press
+**Analyze image**.
 
 **3.2 Put the trained files in the repository.** They are git-ignored on purpose, so add them by force:
 ```
@@ -164,7 +165,7 @@ the next visit (the first load is slow). Anyone who has the link can open a publ
 | --- | --- | --- |
 | Build log downloads `nvidia-...` packages, then fails (space or memory) | The CUDA build of PyTorch was chosen | Check that `--extra-index-url https://download.pytorch.org/whl/cpu` is the line above `torch` in `requirements.txt`. If it still happens, replace the two torch lines with `torch==2.8.0+cpu` and `torchvision==0.23.0+cpu` (pins from an example I read while preparing this and can no longer link to; unverified, so if pip says a version does not exist, use the nearest one it lists) |
 | "The trained models are not loaded ... Missing checkpoints" | The files are not in the GitHub repository | Do step 3.2 (with `-f`), push, then **Reboot app** |
-| Red "These are test models" | You committed models from `--quick` (synthetic drawings) | Train with the real run (part 2), replace the six files, push |
+| Blue "Demo models" label | You committed models from `--quick` (synthetic drawings) | Train with the real run (part 2), replace the six files, push |
 | "A required Python package is missing (...)" | A package is not in `requirements.txt` | Add it, push |
 | "Error running app" while analysing, or the app restarts | Probably not enough memory on the free server (I have seen about 2.7 GB quoted for free apps, but could not confirm it) | Try a smaller picture; read the log; if it persists, use a host with more memory (for example a Hugging Face Space) or run it on a college computer |
 | "File must be 10.0MB or smaller" | The upload limit (`.streamlit/config.toml` and `api.max_upload_mb`) | Shrink the picture, or raise both numbers together |

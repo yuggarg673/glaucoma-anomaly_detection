@@ -46,8 +46,9 @@ python -m backend.app --open              # website and API on http://localhost:
 That is the whole setup: no Node, no build step. The site needs trained models to analyse images:
 
 - **Without them** it still opens, and says plainly that the models are not loaded. It never invents a result.
-- **After `--quick`** (a code check on synthetic drawings) it shows a red **TEST models** warning on every page and every
-  result, because those numbers mean nothing.
+- **After `--quick`** (a code check on synthetic drawings) it shows a blue **Demo models** label in the header, on the
+  Analyze page and above every result, because those numbers are not real findings. The label goes away only when the
+  checkpoints come from real training; it cannot be switched off in the interface.
 - **With real models** (see "Real run" below, or the Colab notebook) it shows the label, anomaly score, cup-to-disc
   ratio, confidence and an annotated image.
 
@@ -85,6 +86,8 @@ python scripts/inspect_data.py            # verify counts and mask values  (see 
 python scripts/run_pipeline.py            # prepares G1020 masks, trains segmenter (on G1020), autoencoder + baseline (on ACRIMA), fits fusion
 python scripts/preview_cdr.py             # LOOK at the disc/cup outlines drawn on ACRIMA images
 ```
+
+Step by step in VS Code, with the data folders, what to expect and how long it takes: **[docs/TRAIN_LOCAL.md](docs/TRAIN_LOCAL.md)**.
 
 **No GPU or PyTorch on your computer?** Use `notebooks/train_on_colab.ipynb` in Google Colab (free GPU). It trains on
 ACRIMA + G1020 and gives you a `trained_models.zip` to extract into this project. It has not been run yet either.
@@ -137,7 +140,7 @@ web/                       the website: index.html + assets/ (plain HTML, CSS an
 frontend/                  optional React + Vite + Tailwind version (never built; not needed)
 scripts/                   run_pipeline, download/inspect data, doctor, make_splits
 tests/                     unit and API tests
-docs/                      USER_GUIDE, DATA, DEPLOY (GitHub + training + Streamlit), TROUBLESHOOTING, DECISIONS
+docs/                      USER_GUIDE, DATA, TRAIN_LOCAL (training in VS Code), DEPLOY (GitHub + training + Streamlit), TROUBLESHOOTING, DECISIONS
 ```
 
 ## API
@@ -145,7 +148,7 @@ docs/                      USER_GUIDE, DATA, DEPLOY (GitHub + training + Streaml
 | Endpoint | Purpose |
 | --- | --- |
 | `GET /` and `GET /assets/*` | the website |
-| `GET /health` | status, whether models are loaded, whether they are test models, upload limit |
+| `GET /health` | status, whether models are loaded, whether they are demo models (trained on synthetic data), upload limit |
 | `GET /explain` | plain-language explanations used by the website |
 | `POST /predict` | multipart field `image` (JPG/PNG). Returns the result and a base64 annotated PNG |
 | `GET /history` | recent results (scores only) |

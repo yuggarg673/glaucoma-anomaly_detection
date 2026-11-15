@@ -278,8 +278,9 @@ class NoUploadTests(unittest.TestCase):
         self.assertEqual(self.fake.texts("metric"), [])
         self.assertFalse(self.fake.stopped)
 
-    def test_real_models_show_no_test_banner(self):
-        self.assertNotIn("test models", self.fake.all_text().lower())
+    def test_real_models_show_no_demo_banner(self):
+        self.assertNotIn("demo models", self.fake.all_text().lower())
+        self.assertNotIn("demo result", self.fake.all_text().lower())
 
 
 class ModelsMissingTests(unittest.TestCase):
@@ -309,12 +310,19 @@ class ModelsMissingTests(unittest.TestCase):
         self.assertEqual(load.call_count, 1)
 
 
-class TestModelsTests(unittest.TestCase):
+class DemoModelsTests(unittest.TestCase):
     def test_banner_comes_before_the_upload(self):
         fake = run_page(FakeStreamlit(), loader(CountingStandIn(test_models=True)))
         kinds = [k for k, _, _ in fake.events]
-        banner = next(i for i, (k, _, t) in enumerate(fake.events) if k == "error" and "These are test models" in t)
+        banner = next(i for i, (k, _, t) in enumerate(fake.events) if k == "info" and "Demo models." in t)
         self.assertLess(banner, kinds.index("file_uploader"))
+
+    def test_banner_is_calm_but_says_the_results_are_not_real(self):
+        fake = run_page(FakeStreamlit(), loader(CountingStandIn(test_models=True)))
+        self.assertEqual(fake.texts("error"), [], "a demo-model label must not be shown as an error")
+        banner = next(t for t in fake.texts("info") if "Demo models." in t)
+        self.assertIn("not real findings", banner)
+        self.assertIn("synthetic drawings", banner)
 
 
 class UploadTests(unittest.TestCase):
@@ -425,11 +433,19 @@ class ResultTests(unittest.TestCase):
         self.assertEqual(other.texts("metric"), [])
         self.assertTrue(any("Press **Analyze image**" in t for t in other.texts("caption")))
 
-    def test_test_models_are_flagged_on_the_page_and_on_the_result(self):
+    def test_demo_models_are_flagged_on_the_page_and_on_the_result(self):
         flagged = run_page(FakeStreamlit(upload=good_upload(), clicks=[ANALYZE]), loader(CountingStandIn(test_models=True)))
-        banners = [t for t in flagged.texts("error") if "These are test models" in t]
-        self.assertEqual(len(banners), 2)
-        self.assertEqual([t for t in self.fake.texts("error")], [], "real models must not carry the banner")
+        page_label = [t for t in flagged.texts("info") if t.startswith("**Demo models.**")]
+        result_label = [t for t in flagged.texts("info") if t.startswith("**Demo result.**")]
+        self.assertEqual(len(page_label), 1)
+        self.assertEqual(len(result_label), 1)
+        self.assertIn("not real findings", result_label[0])
+        self.assertEqual(flagged.texts("error"), [], "a demo-model label must not be shown as an error")
+        # the result label comes before the verdict, so it is read first
+        order = [t for k, _, t in flagged.events if k in ("info", "warning") and (t.startswith("**Demo result.**") or "Glaucoma suspected" in t or "Normal-like" in t)]
+        self.assertTrue(order[0].startswith("**Demo result.**"), order)
+        self.assertEqual([t for t in self.fake.texts("error")], [], "real models must not carry the label")
+        self.assertFalse(any(t.startswith("**Demo") for t in self.fake.texts("info")))
 
 
 class Forced(CountingStandIn):

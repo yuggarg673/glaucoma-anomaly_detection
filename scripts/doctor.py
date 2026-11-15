@@ -76,7 +76,7 @@ def main():
         results.append(line(OK if h.get("models_loaded") else WARN, f"server reachable, models_loaded={h.get('models_loaded')}",
                             h.get("detail", "")))
         if h.get("models_loaded") and h.get("test_models"):
-            results.append(line(WARN, "the loaded models are TEST models (trained on synthetic drawings): results are meaningless",
+            results.append(line(WARN, "the loaded models are demo models (trained on synthetic drawings): results are not real findings",
                                 "delete checkpoints/ and run python scripts/run_pipeline.py on the real data"))
         try:
             with urllib.request.urlopen(a.api + "/", timeout=3) as r:

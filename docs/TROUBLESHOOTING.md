@@ -24,7 +24,7 @@ Logs of every training script are in `logs/`.
 | `Cannot reach the analysis server` in the website | The server is not running, or the page was opened as a file | `python -m backend.app`, then open **http://localhost:5000** (not `web/index.html` by double-click) |
 | `ModuleNotFoundError: No module named 'glaucoma'` or `'backend'` | Started from the wrong folder | Run it from the project folder: `python -m backend.app` (it finds `src/` by itself) |
 | Website opens but says "models not loaded" | No checkpoints yet | `python scripts/run_pipeline.py` (or the Colab notebook), copy `checkpoints/` next to `backend/`, restart |
-| Red banner "These are test models" / pill says TEST models | The checkpoints came from `--quick` (synthetic drawings) | Delete `checkpoints/`, run `python scripts/run_pipeline.py` (real data), restart |
+| Blue "Demo models" label / pill says "demo models" | The checkpoints came from `--quick` (synthetic drawings), so the results are not real findings | Delete `checkpoints/`, train on the real data (`docs/TRAIN_LOCAL.md` or the Colab notebook), restart |
 | Page shows only "This website needs JavaScript" or stays blank | JavaScript off, or the script failed to load | Turn JavaScript on; press F12 and read the Console; hard-reload (Ctrl+Shift+R). `GET /assets/app.js` must return 200 |
 | JSON `website_missing` at `/` | The `web/` folder is missing or you ran from another folder | Run from the project root; check that `web/index.html` exists (`git status`) |
 | Text looks different from the screenshots | Google Fonts blocked or offline | Harmless: the page falls back to system fonts |
@@ -37,12 +37,16 @@ Logs of every training script are in `logs/`.
 | `CDR unavailable` for many images | Segmenter not good enough, or the image is a wide photo (disc small) | Check Dice in `results/metrics.json`; use images cropped around the disc; see `results/cdr_preview/` |
 | `npm install` fails | Only the optional React app needs it | Ignore it and use `python -m backend.app`, or use Node 18+ and check your network |
 | Results look too good | Possible data leakage or tiny test set | Check `data/splits/classification.csv`; report the confidence interval |
-
-## `--quick` mode
-
-`python scripts/run_pipeline.py --quick` uses **synthetic drawings** (not eye photos) at tiny size for two epochs.
-It only proves the code runs end to end. Never report its numbers.
+| Training prints `device=cpu` and every epoch takes minutes | The computer has no NVIDIA GPU, or PyTorch is the CPU build | Expected on a laptop. Use the Colab notebook (free GPU), or install the CUDA build of PyTorch if you have an NVIDIA GPU: `docs/TRAIN_LOCAL.md`, step 3 |
+| `inspect_data.py` shows 0 ACRIMA images, or G1020 without json labels | The files are in the wrong folder, or the real layout differs from what the converter expects | `docs/TRAIN_LOCAL.md`, step 5. Do not train until the counts are right; send the output of `inspect_data.py` |
 | `streamlit: command not found` | Streamlit is not installed in this Python | `pip install -r requirements.txt`, then `streamlit run streamlit_app.py` (or `python -m streamlit run streamlit_app.py`) |
 | Streamlit page says "The trained models are not loaded" | `checkpoints/` is missing, or (on Streamlit Cloud) the files were never committed | Train (Colab notebook), then `git add -f` the six files and push. See `docs/DEPLOY.md`, part 3 |
 | Streamlit Cloud build runs out of space or downloads `nvidia-...` packages | The CUDA build of PyTorch was chosen | `--extra-index-url https://download.pytorch.org/whl/cpu` must be the line above `torch` in `requirements.txt`; fallback pins are in `docs/DEPLOY.md` |
 | `git push` says `refusing to allow a Personal Access Token to create or update workflow` | The token has no `workflow` permission and the repo contains `.github/workflows` | Tick `workflow` on the token, or sign in through the browser window |
+
+## `--quick` mode
+
+`python scripts/run_pipeline.py --quick` uses **synthetic drawings** (not eye photos) at tiny size for two epochs.
+It only proves the code runs end to end. Never report its numbers. The website and the Streamlit page mark such
+models with a blue **Demo models** label (and a **Demo result** note above every result). It is calm on purpose, but it is
+always shown, and it disappears by itself only when the checkpoints were trained on real data.

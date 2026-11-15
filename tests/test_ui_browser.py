@@ -164,8 +164,9 @@ class WebsiteInBrowser(unittest.TestCase):
         href = self.page.get_attribute("a:has-text('Download annotated image')", "href")
         self.assertTrue(href.startswith("blob:"), href)
         self.assertEqual(self.page.get_attribute("a:has-text('Download annotated image')", "download"), "annotated_fundus.png")
-        # no test-model warnings when the models are not test models
-        self.assertEqual(self.page.locator("text=Test models").count(), 0)
+        # no demo-model label when the models are not demo models
+        self.assertEqual(self.page.locator(".note-demo").count(), 0)
+        self.assertNotIn("demo", self.page.inner_text("#status-pill").lower())
         self.assertIn("models loaded", self.page.inner_text("#status-pill"))
 
     def test_result_table_lists_the_marked_regions_with_plain_words(self):
@@ -193,14 +194,43 @@ class WebsiteInBrowser(unittest.TestCase):
         self.assertIn("NOT the probability", text)       # the confidence warning is shown, not hidden
         self.assertEqual(self.page.evaluate("document.querySelectorAll('.help details[open]').length"), 3)
 
-    def test_test_models_are_flagged_everywhere(self):
+    def test_demo_models_are_flagged_everywhere(self):
         self.open(self.url_test_models, "analyze")
-        self.assertIn("TEST models", self.page.inner_text("#status-pill"))
-        self.assertIn("These are test models", self.page.inner_text("main"))
+        pill = self.page.locator("#status-pill")
+        self.assertIn("demo models", pill.inner_text().lower())
+        self.assertIn("not real findings", pill.get_attribute("title"))
+        banner = self.page.locator("main .note-demo")
+        self.assertEqual(banner.count(), 1)
+        self.assertTrue(banner.is_visible())
+        self.assertIn("Demo models.", banner.inner_text())
+        self.assertIn("not real findings", banner.inner_text())
         self.analyze()
         self.page.wait_for_selector("#result-top")
-        self.assertIn("Test models: ignore this result", self.page.inner_text(".result"))
+        result = self.page.locator(".result")
+        self.assertIn("Demo result.", result.inner_text())
+        self.assertIn("not real findings", result.locator(".note-demo").inner_text())
+        # the label is the first thing in the result, above the verdict, so it is read before the label and numbers
+        self.assertIn("note-demo", self.page.evaluate("document.querySelector('.result').firstElementChild.className"))
+        self.assertTrue(result.locator(".note-demo").is_visible())
         self.assertIn("stand-in (test only)", self.page.inner_text(".fine"))
+
+    def test_demo_label_is_calm_not_red(self):
+        """The label is toned down on purpose (blue, not an error box), but it must not become invisible."""
+        self.open(self.url_test_models, "analyze")
+        self.analyze()
+        self.page.wait_for_selector("#result-top")
+        for selector in ("#status-pill", "main .note-demo", ".result .note-demo"):
+            r, g, b = self.page.evaluate(
+                "(s) => getComputedStyle(document.querySelector(s)).backgroundColor.match(/\\d+/g).slice(0, 3).map(Number)", selector)
+            self.assertGreaterEqual(b, r, f"{selector} should be blue-ish, not red-ish (rgb {r},{g},{b})")
+            self.assertLess(r, 250, f"{selector} background is almost white: the label would not stand out")
+        self.assertEqual(self.page.locator("main .note-red").count(), 0, "a demo-model label must not be shown as an error")
+        self.assertEqual(self.page.locator(".pill-down").count(), 0)
+
+    def test_demo_pill_is_on_every_page(self):
+        for route in ("", "analyze", "guide", "history"):
+            self.open(self.url_test_models, route)
+            self.assertIn("demo models", self.page.inner_text("#status-pill").lower(), f"missing on page '{route or 'home'}'")
 
     # ------------------------------------------------------------------ errors and edge cases
     def test_unreadable_image_gives_a_clear_error_with_a_reference(self):

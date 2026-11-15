@@ -112,16 +112,20 @@
   const PILL_TEXT = {
     checking: "Checking server",
     ok: "Server online, models loaded",
-    test: "Server online, TEST models only",
+    test: "Server online, demo models",
     degraded: "Server online, models not loaded",
     down: "Server unreachable",
+  };
+  // Shown when the pill is hovered and the server gave no detail of its own.
+  const PILL_TITLE = {
+    test: "Demo models: trained on synthetic drawings, not eye photos. Results show how the website works and are not real findings.",
   };
 
   function paintPill() {
     const pill = document.getElementById("status-pill");
     pill.className = "pill pill-" + health.kind;
     pill.replaceChildren(h("span", { class: "dot" }), PILL_TEXT[health.kind]);
-    pill.title = (health.data && health.data.detail) || "";
+    pill.title = (health.data && health.data.detail) || PILL_TITLE[health.kind] || "";
   }
 
   async function checkHealth() {
@@ -240,9 +244,9 @@
 
     return h("div", { class: "result" },
       r.test_models
-        ? h("p", { class: "note note-red", role: "note" },
-          h("strong", {}, "Test models: ignore this result. "),
-          "The models behind it were not trained on real eye photos, so the label and numbers mean nothing.")
+        ? h("p", { class: "note note-demo", role: "note" },
+          h("strong", {}, "Demo result. "),
+          "It came from demo models trained on synthetic drawings, not eye photos, so the label and numbers are not real findings.")
         : null,
       h("div", { class: "verdict", id: "result-top", tabindex: "-1" },
         h("span", { class: "verdict-pill " + (suspected ? "verdict-suspected" : "verdict-normal") },
@@ -346,11 +350,11 @@
           ...withCode((health.data && health.data.fix) || TRAIN_HINT));   // replaceChildren needs nodes or strings, not an array
       } else if (health.kind === "test") {
         modelNote.hidden = false;
-        modelNote.className = "note note-red";
+        modelNote.className = "note note-demo";
         modelNote.replaceChildren(
-          h("strong", {}, "These are test models. "),
-          "They were trained on synthetic drawings as a code check, not on eye photos, so every result is meaningless. Train the real models with ",
-          h("code", {}, "python scripts/run_pipeline.py"), " (or the Colab notebook), then restart the server.");
+          h("strong", {}, "Demo models. "),
+          "They were trained on synthetic drawings, not on eye photos, so the results here show how the website works and are not real findings. To replace them with models trained on the real data, run ",
+          h("code", {}, "python scripts/run_pipeline.py"), " (steps in docs/TRAIN_LOCAL.md, or use the Colab notebook), then restart the server.");
       } else if (health.kind === "down") {
         modelNote.hidden = false;
         modelNote.className = "note note-red";

@@ -42,9 +42,12 @@ log = logging.getLogger("streamlit_app")
 SHORT_NOTE = "A student research project. Not a medical device and not a diagnosis."
 PRIVACY = ("This page does not save your image and keeps no history. It is still a public web page when deployed: "
            "do not upload identifiable patient images to it.")
-TEST_MODELS_TEXT = ("**These are test models.** They were trained on synthetic drawings as a code check, not on eye "
-                    "photos, so every result is meaningless. Train the real models (`python scripts/run_pipeline.py` or "
-                    "the Colab notebook), add them to the repository and redeploy: see docs/DEPLOY.md.")
+DEMO_MODELS_TEXT = ("**Demo models.** They were trained on synthetic drawings, not on eye photos, so the results here show "
+                    "how this page works and are not real findings. To replace them, train on the real data "
+                    "(`python scripts/run_pipeline.py`, see docs/TRAIN_LOCAL.md, or use the Colab notebook), add the new "
+                    "files to the repository and redeploy: see docs/DEPLOY.md.")
+DEMO_RESULT_TEXT = ("**Demo result.** It came from demo models trained on synthetic drawings, not eye photos, so the label "
+                    "and numbers are not real findings.")
 STREAMLIT_FIX = ("On Streamlit Community Cloud the trained files must be in your GitHub repository: add them with "
                  "`git add -f checkpoints/...`, push, then reboot the app (docs/DEPLOY.md, part 3).")
 ANNOTATED_CAPTION = ("Made by the model. Teal outline = optic disc, white outline = cup. Dashed boxes mark where the "
@@ -104,7 +107,7 @@ def preview_of(rgb):
 def show_result(r: dict, preview):
     s = present.summarize(r)
     if r.get("test_models"):
-        st.error(TEST_MODELS_TEXT)
+        st.info(DEMO_RESULT_TEXT)
     if s["suspected"]:
         st.warning(f"**{s['verdict']}**  \n{s['verdict_note']}")
     else:
@@ -169,7 +172,7 @@ def main():
             st.rerun()
         st.stop()
     if getattr(analyzer, "test_models", False):
-        st.error(TEST_MODELS_TEXT)
+        st.info(DEMO_MODELS_TEXT)
 
     max_mb = int(cfg["api"]["max_upload_mb"])
     uploaded = st.file_uploader("Choose a retinal photo (JPG or PNG)", type=["jpg", "jpeg", "png"],
